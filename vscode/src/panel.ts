@@ -310,6 +310,7 @@ class DashboardPanel implements RpcHandlers {
       limits: await this.orch.limits(),
       account: await this.orch.account(),
       accounts: await this.orch.accounts(),
+      accountAliases: this.accountAliases(),
       mcp: (() => {
         const list = this.orch.mcp.servers;
         const n = (st: string): number => list.filter((s) => s.state === st).length;

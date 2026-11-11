@@ -1350,6 +1350,7 @@ body.vscode-high-contrast .dg-loop, body.vscode-high-contrast .dg-parallel, body
 .acc-meta { font-size: var(--cs-font-sm); color: var(--cs-text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-meta.wrap { white-space: normal; }
 .acc-state { margin-top: var(--cs-space-1); display: inline-flex; align-items: center; gap: 6px; padding: 2px var(--cs-space-2); border-radius: var(--cs-radius-full); font-size: var(--cs-font-xs); font-weight: var(--cs-weight-strong); }
+.acc-inuse { margin-top: var(--cs-space-1); font-size: var(--cs-font-xs); font-weight: var(--cs-weight-strong); color: var(--cs-text-link); text-transform: uppercase; letter-spacing: 0.04em; }
 .acc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .acc-state.ok { color: var(--cs-status-ok-text); background: var(--cs-status-ok-tint); }
 .acc-state.warn { color: var(--cs-status-warn-text); background: var(--cs-status-warn-tint); }

@@ -19,7 +19,7 @@ interface Views {
 }
 
 (function () {
-  const { call, attempt, icon, esc, $, $$, views, go, patch, LOGO } = window.CS;
+  const { call, attempt, icon, esc, $, $$, views, go, patch, LOGO, accountKey } = window.CS;
 
   /** Each account keeps one of the agents' hues, picked by its key: the same tile looks the same every time. */
   const HUES = ['blue', 'green', 'purple', 'orange', 'cyan', 'pink', 'yellow', 'red'];
@@ -52,7 +52,7 @@ interface Views {
   function tilesOf(entries: readonly AccountEntry[], aliases: Readonly<Record<string, string>>): AccountTile[] {
     const groups = new Map<string, AccountEntry[]>();
     for (const e of entries) {
-      const key = e.email ? e.email.toLowerCase() : `dir:${e.dir}`;
+      const key = accountKey(e);
       groups.set(key, [...(groups.get(key) ?? []), e]);
     }
     return [...groups].map(([key, list]) => {
@@ -178,6 +178,7 @@ interface Views {
         ${email}
         <span class="acc-meta">${esc(meta)}</span>
         ${state}
+        ${a.current ? '<span class="acc-inuse">In use</span>' : ''}
       </button>
       <span class="acc-tools">
         <button class="icon-btn" data-action="start-rename" data-key="${esc(a.key)}" title="${a.alias ? 'Rename' : 'Give it a short name'}" aria-label="Alias for ${esc(a.name)}">${icon('edit')}</button>

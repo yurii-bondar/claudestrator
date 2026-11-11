@@ -555,16 +555,24 @@ interface Views {
       <div class="tree-sections">${sections || '<div class="tree-empty muted small">No task matches</div>'}</div>`;
   }
 
-  /** Which Claude Code account the agents, MCP and limits use; one click to switch. */
+  /** An account's key, as the start screen's tiles and the aliases know it: its email, lowercase, or its folder. */
+  const accountKey = (a: { email?: string | undefined; dir: string }) => (a.email ? a.email.toLowerCase() : `dir:${a.dir}`);
+
+  /** Which Claude Code account the agents, MCP and limits use; one click to switch. Named as on the start screen. */
   function accountSwitcher(o: Overview | null, toolsOk: boolean) {
     if (!o || !o.account) return '';
     const a = o.account;
+    const aliases = o.accountAliases || {};
+    const alias = aliases[accountKey({ email: a.email, dir: a.shownDir })];
     const who = a.email || a.label;
     const rows = (o.accounts || [])
-      .map((x) => `<button data-action="set-account" data-dir="${esc(x.dir)}" class="${x.current ? 'current' : ''}">${x.current ? icon('check') : '<span class="ic"></span>'}<span class="acc-row"><b>${esc(x.email || x.label)}${x.loggedIn === false ? ' <span class="badge tone-error">signed out</span>' : ''}</b><span class="muted small">${esc(x.label)} · ${esc(x.dir.replace(/^\/Users\/[^/]+/, '~'))}</span></span></button>`)
+      .map((x) => {
+        const xAlias = aliases[accountKey(x)];
+        return `<button data-action="set-account" data-dir="${esc(x.dir)}" class="${x.current ? 'current' : ''}">${x.current ? icon('check') : '<span class="ic"></span>'}<span class="acc-row"><b>${esc(xAlias || x.email || x.label)}${x.loggedIn === false ? ' <span class="badge tone-error">signed out</span>' : ''}</b><span class="muted small">${xAlias ? `${esc(x.email || x.label)} · ` : ''}${esc(x.label)} · ${esc(x.dir.replace(/^\/Users\/[^/]+/, '~'))}</span></span></button>`;
+      })
       .join('');
     return `<span class="menu-wrap acc-wrap">
-      <button class="acc-btn ${a.loggedIn === false ? 'signed-out' : ''}" data-action="eff-menu" title="${esc(`${a.loggedIn === false ? 'Signed out — ' : ''}Claude account for agents, MCP and limits: ${who} (${a.shownDir}) — ${a.sourceText}`)}">${icon('user')}<span>${esc(who)}</span>${toolsOk ? `<i class="acc-ok" title="All tools ready">${icon('check')}</i>` : ''}▾</button>
+      <button class="acc-btn ${a.loggedIn === false ? 'signed-out' : ''}" data-action="eff-menu" title="${esc(`${a.loggedIn === false ? 'Signed out — ' : ''}Claude account for agents, MCP and limits: ${alias ? `${alias}, ` : ''}${who} (${a.shownDir}) — ${a.sourceText}`)}">${icon('user')}<span>${esc(alias || who)}</span>${toolsOk ? `<i class="acc-ok" title="All tools ready">${icon('check')}</i>` : ''}▾</button>
       <div class="menu acc-menu">
         <div class="menu-title">Claude account for agents, MCP servers and limits</div>
         ${window.__csHost === 'desktop' ? `<button data-action="nav" data-name="start">${icon('users')}<span class="acc-row"><b>All accounts…</b><span class="muted small">the start screen: pick, add, name or remove one</span></span></button>` : ''}
@@ -2232,7 +2240,7 @@ interface Views {
   // Live durations ("2m 13s") tick without re-rendering anything else.
   setInterval(() => tick(), 1000);
 
-  window.CS = { vscode, LOGO, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
+  window.CS = { vscode, LOGO, accountKey, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
     // Called by the last script to load (config.js) once every view is registered.
     boot: async () => {
       renderShell();

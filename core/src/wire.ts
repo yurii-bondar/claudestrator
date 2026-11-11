@@ -656,6 +656,8 @@ export interface Overview {
   limits: StoredLimits | null;
   account: Account;
   accounts: AccountEntry[];
+  /** The short names given to accounts on the start screen, by its tiles' key (the email, lowercase, or `dir:<folder>`). */
+  accountAliases: Record<string, string>;
   mcp: McpSummary;
   defaults: DefaultsView | null;
   permissions: PermissionRequest[];

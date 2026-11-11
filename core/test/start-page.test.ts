@@ -42,6 +42,7 @@ async function startScreen(accounts: Entry[], order: string[] = [], aliases: Rec
   const known: Record<string, unknown> = {
     views,
     LOGO: '<svg></svg>',
+    accountKey: (a: { email?: string; dir: string }) => (a.email ? a.email.toLowerCase() : `dir:${a.dir}`),
     esc: (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'),
     icon: (name: string) => `<i data-icon="${name}"></i>`,
     patch: (_region: string, h: string) => ((html = h), true),
@@ -85,6 +86,8 @@ test('start: one account signed in from two folders is one tile, working under t
   assert.deepEqual(s.keys(), ['jurek@rollix.email', 'b@example.com']);
   assert.match(s.html(), /class="acc-tile current" data-key="jurek@rollix.email" draggable="true">\s*<button class="acc-main" data-action="start-pick" data-dir="\/Users\/me\/.claude-work"/);
   assert.match(s.html(), /Team · ~\/.claude-work \+1/);
+  assert.equal((s.html().match(/acc-inuse/g) || []).length, 1, 'the tile in use, and only it, says so');
+  assert.match(s.html(), /data-dir="\/Users\/me\/.claude-work"[\s\S]*?<span class="acc-inuse">In use<\/span>/);
   assert.match(s.html(), /acc-state ok">Signed in/);
   assert.match(s.html(), /acc-state warn">Signed out · sign in/);
   assert.match(s.html(), /<h1>Choose an account<\/h1>/);
