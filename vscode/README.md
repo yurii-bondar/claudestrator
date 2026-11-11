@@ -2,9 +2,9 @@
 
 **A team of Claude Code agents in VS Code: a ticket in, reviewed draft PRs out, across several repos.**
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Installs](https://img.shields.io/visual-studio-marketplace/i/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Rating](https://img.shields.io/visual-studio-marketplace/r/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/yurii-bondar/vs-code-extensions/blob/main/claudestrator/LICENSE)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Installs](https://img.shields.io/visual-studio-marketplace/i/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Rating](https://img.shields.io/visual-studio-marketplace/r/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/yurii-bondar/claudestrator/blob/main/LICENSE)
 
-![A task from plain words to draft PRs: the plan, your approval, developers per repo, two reviewers at once, a fix round, and the push you confirm](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/demo.gif)
+![A task from plain words to draft PRs: the plan, your approval, developers per repo, two reviewers at once, a fix round, and the push you confirm](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/demo.gif)
 
 You describe a task in plain words, or paste an issue: a Jira key or link, a GitHub or GitLab issue (`#12`, `owner/repo#12` or its link), a Linear issue link, or a Confluence page. A planner writes a plan for you to approve; a developer works in each repo, with its checks after it; a tester covers the change across the repos; reviewers check the whole diff with fresh eyes and send what they find back for a fix round. Everything is committed locally, and nothing is pushed until you say so: then the draft PRs open (on GitHub, Bitbucket Cloud, or as merge requests on GitLab).
 
@@ -50,55 +50,55 @@ Each agent is a `claude -p` session of your installed Claude Code CLI, under you
 
 **A task in plain words, with its group, instructions and the pipeline it will run**
 
-![A task in plain words, with its group, instructions and the pipeline it will run](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/01-new-task.png)
+![A task in plain words, with its group, instructions and the pipeline it will run](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/01-new-task.png)
 
 **The plan waits for your approval; nothing has changed in your repos yet**
 
-![The plan waits for your approval; nothing has changed in your repos yet](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/02-plan-approval.png)
+![The plan waits for your approval; nothing has changed in your repos yet](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/02-plan-approval.png)
 
 **Agents at work: developer per repo, then the tester across all of them**
 
-![Agents at work: developer per repo, then the tester across all of them](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/03-running.png)
+![Agents at work: developer per repo, then the tester across all of them](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/03-running.png)
 
 **Two reviewers at once: the reviewer and the appsec reviewer, each in its own session**
 
-![Two reviewers at once: the reviewer and the appsec reviewer, each in its own session](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/11-parallel-review.png)
+![Two reviewers at once: the reviewer and the appsec reviewer, each in its own session](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/11-parallel-review.png)
 
 **The reviewer found a blocker: a fix round**
 
-![The reviewer found a blocker: a fix round](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/04-fix-round.png)
+![The reviewer found a blocker: a fix round](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/04-fix-round.png)
 
 **Everything is committed locally; the push and the draft PRs wait for you**
 
-![Everything is committed locally; the push and the draft PRs wait for you](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/05-confirm-push.png)
+![Everything is committed locally; the push and the draft PRs wait for you](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/05-confirm-push.png)
 
 **The task's flow: the review loop, its round, and the reviewers that work in parallel**
 
-![The task's flow: the review loop, its round, and the reviewers that work in parallel](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/12-task-flow.png)
+![The task's flow: the review loop, its round, and the reviewers that work in parallel](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/12-task-flow.png)
 
 **Tasks grouped by what needs you**
 
-![Tasks grouped by what needs you](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/06-tasks.png)
+![Tasks grouped by what needs you](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/06-tasks.png)
 
 **Agents and the pipeline: models, effort, order**
 
-![Agents and the pipeline: models, effort, order](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/07-agents.png)
+![Agents and the pipeline: models, effort, order](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/07-agents.png)
 
 **Scenarios: Deliver, the built-in ones and your own**
 
-![Scenarios: Deliver, the built-in ones and your own](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/08-scenarios.png)
+![Scenarios: Deliver, the built-in ones and your own](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/08-scenarios.png)
 
 **Repos and the checks that run after each agent**
 
-![Repos and the checks that run after each agent](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/09-repos.png)
+![Repos and the checks that run after each agent](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/09-repos.png)
 
 **A group (epic, story) with its Jira key and the instructions it brings**
 
-![A group (epic, story) with its Jira key and the instructions it brings](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/10-groups.png)
+![A group (epic, story) with its Jira key and the instructions it brings](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/10-groups.png)
 
 **A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions**
 
-![A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/13-scenario-diagram.png)
+![A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/13-scenario-diagram.png)
 
 ## Using it
 

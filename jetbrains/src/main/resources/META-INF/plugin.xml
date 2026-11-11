@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>bondevn.claudestrator</id>
     <name>Claudestrator</name>
-    <vendor url="https://github.com/yurii-bondar/vs-code-extensions">Yurii Bondar</vendor>
+    <vendor url="https://github.com/yurii-bondar/claudestrator">Yurii Bondar</vendor>
 
     <description><![CDATA[
         <p>A <b>Claude Code</b> agent pipeline inside your IDE: Claudestrator plans a task, waits for your approval,

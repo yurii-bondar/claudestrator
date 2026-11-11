@@ -8,8 +8,8 @@
     "typeRoots": ["./node_modules/@types"],
     "baseUrl": ".",
     "paths": {
-      "vscode": ["../../../claudestrator/node_modules/@types/vscode"],
-      "yaml": ["../../../claudestrator/node_modules/yaml"]
+      "vscode": ["../../vscode/node_modules/@types/vscode"],
+      "yaml": ["../../vscode/node_modules/yaml"]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,
