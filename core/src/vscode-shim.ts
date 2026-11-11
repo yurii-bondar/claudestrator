@@ -1,10 +1,39 @@
 // A stand-in for the `vscode` module, only as much of it as the Claudestrator engine (vscode/src/orchestrator.ts
-// and panel.ts) touches. Anything that needs an editor (dialogs, opening a file, terminals, secrets) is asked of the
-// IDE plugin over the transport; settings and file watching live here. The engine's code is not modified.
+// and panel.ts) touches, for the hosts that run that code outside VS Code: the JetBrains plugin's sidecar and the
+// desktop app. Their builds alias `vscode` to this file. Anything that needs an editor (dialogs, opening a file,
+// terminals, secrets) is asked of the host (`setHost`); settings and file watching live here. The engine's code is
+// not modified.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { request, send } from './transport';
-import type { Settings } from './protocol';
+
+/** Flat, like VS Code's: `claudestrator.claudePath`, `claudestrator.atlassian.site`, … */
+type Settings = Record<string, unknown>;
+
+/**
+ * What the shim asks of the application that runs it: the IDE plugin over stdio, the desktop app across a thread.
+ * `request` gets exactly one answer for each call (the methods are listed in jetbrains/…/engine/HostRequests.kt).
+ */
+interface ShimHost {
+  request<T = unknown>(method: string, params: unknown): Promise<T>;
+  /** A message for the dashboard page. */
+  post(msg: unknown): void;
+  /** Brings the dashboard forward. */
+  revealDashboard(): void;
+}
+
+let host: ShimHost | undefined;
+
+/** Set once, before the engine's code runs. */
+function setHost(h: ShimHost): void {
+  host = h;
+}
+
+function current(): ShimHost {
+  if (!host) throw new Error('vscode-shim: no host set');
+  return host;
+}
+
+const request = <T = unknown>(method: string, params: unknown): Promise<T> => current().request<T>(method, params);
 
 interface Disposable {
   dispose(): unknown;
@@ -143,9 +172,9 @@ function watchFiles(pattern: RelativePattern): FileSystemWatcher {
         // fs.watch does not say which it was; look. The engine treats a new file as a changed one.
         fs.stat(full, (err) => (err ? deleted.fire(uri) : changed.fire(uri)));
       });
-      watcher.on('error', (e) => console.error('[sidecar] watching', dir, 'failed:', e.message));
+      watcher.on('error', (e) => console.error('[claudestrator] watching', dir, 'failed:', e.message));
     } catch (e) {
-      console.error('[sidecar] cannot watch', dir, (e as Error).message);
+      console.error('[claudestrator] cannot watch', dir, (e as Error).message);
     }
   };
   if (fs.existsSync(dir)) start();
@@ -226,7 +255,7 @@ class Terminal {
     // A terminal that runs one process (a sign-in) is run by the IDE and reports when it ends; one without is a shell
     // the engine types a command into.
     const { shellPath, shellArgs, ...rest } = options;
-    void request('terminalOpen', { id: this.id, ...rest, command: shellPath ? [shellPath, ...(shellArgs || [])] : null }).catch((e) => console.error('[sidecar] terminal', (e as Error).message));
+    void request('terminalOpen', { id: this.id, ...rest, command: shellPath ? [shellPath, ...(shellArgs || [])] : null }).catch((e) => console.error('[claudestrator] terminal', (e as Error).message));
     terminals.set(this.id, this);
   }
 
@@ -288,7 +317,7 @@ function quietly<T>(fn: () => T): T {
 }
 
 const revealDashboard = (): void => {
-  if (revealPanels) send({ type: 'revealDashboard' });
+  if (revealPanels) current().revealDashboard();
 };
 
 /** What the engine's DashboardPanel needs of a webview panel; the IDE shows the page and relays messages. */
@@ -303,7 +332,7 @@ function createWebviewPanel(): unknown {
     cspSource: '',
     asWebviewUri: (uri) => uri,
     postMessage: async (msg) => {
-      send({ type: 'post', msg });
+      current().post(msg);
       return true;
     },
     onDidReceiveMessage: received.event,
@@ -367,7 +396,7 @@ const commands = {
     if (command === 'markdown.showPreviewToSide' && target) await request('openFile', { path: target.fsPath, preview: true, beside: true });
     else if (command === 'revealInExplorer' && target) await request('reveal', { path: target.fsPath, inOS: false });
     else if (command === 'revealFileInOS' && target) await request('reveal', { path: target.fsPath, inOS: true });
-    else if (command !== 'setContext') console.error('[sidecar] ignored command', command);
+    else if (command !== 'setContext') console.error('[claudestrator] ignored command', command);
   },
 };
 
@@ -460,7 +489,8 @@ export {
   languages,
   commands,
   env,
-  // not part of vscode: how main.ts feeds the shim
+  // not part of vscode: how a host feeds the shim
+  setHost,
   createContext,
   setSettings,
   setWorkspaceFolders,
@@ -469,4 +499,4 @@ export {
   quietly,
   terminalClosed,
 };
-export type { ExtensionContext };
+export type { ExtensionContext, Settings, ShimHost };

@@ -12,13 +12,13 @@ Nothing of the engine or the dashboard is rewritten. The plugin is a thin Kotlin
 │ tool window: task list       │ ◄────────────► │ sidecar/src/main.ts                       │
 │ editor tab: JCEF browser ────┼── page ◄─► ────┤   Orchestrator + DashboardPanel           │
 │   (core/page)                │                │   (vscode/src + core/src, unchanged)      │
-│ status bar, notifications,   │                │ sidecar/src/vscode-shim.ts                │
+│ status bar, notifications,   │                │ core/src/vscode-shim.ts                   │
 │ settings, dialogs, terminals │ ◄── requests ──┤   stands in for the `vscode` module       │
 └──────────────────────────────┘                └──────────────────────────────────────────┘
 ```
 
 - **The page** (`core/page/*.ts`, built into the engine folder by the sidecar's build) is shown in the IDE's embedded browser. `acquireVsCodeApi()` and `--vscode-*` CSS variables are answered by the plugin (`PageHtml.kt`, `ThemeCss.kt`), so the page follows the IDE theme.
-- **The engine** runs as a Node process. The build bundles it with esbuild, aliasing `vscode` to `sidecar/src/vscode-shim.ts`, which keeps settings and file watching itself and asks the IDE for everything an editor does (dialogs, opening files, terminals, secrets). The wire is one JSON object per line (`sidecar/src/protocol.ts` ↔ `engine/Protocol.kt`).
+- **The engine** runs as a Node process. The build bundles it with esbuild, aliasing `vscode` to `core/src/vscode-shim.ts` (shared with the desktop app), which keeps settings and file watching itself and asks the IDE for everything an editor does (dialogs, opening files, terminals, secrets). The wire is one JSON object per line (`sidecar/src/protocol.ts` ↔ `engine/Protocol.kt`).
 - **What `extension.ts` does** in VS Code (task list, status bar, notifications, commands) is Kotlin here: `ui/`, `Notifier.kt`, `actions/`.
 
 When the extension's engine or page changes, nothing here changes unless the wire does: rebuild and the plugin has it.

@@ -1,7 +1,7 @@
 // Runs the Claudestrator engine for the JetBrains plugin. What extension.ts does in VS Code (tree, status bar,
 // notifications, commands) is the plugin's job; this file only exposes the engine's state, events and operations.
-import { exitCleanly, onBeforeExit, onMessage, send } from './transport';
-import * as shim from './vscode-shim';
+import { exitCleanly, onBeforeExit, onMessage, request, send } from './transport';
+import * as shim from '../../../core/src/vscode-shim';
 import type { Incoming } from './protocol';
 import { Orchestrator } from '../../../vscode/src/orchestrator';
 import { DashboardPanel } from '../../../vscode/src/panel';
@@ -156,6 +156,8 @@ if (major < MIN_NODE_MAJOR) {
   process.exit(1);
 }
 
+// What the engine asks of an editor goes to the plugin over stdio.
+shim.setHost({ request, post: (msg) => send({ type: 'post', msg }), revealDashboard: () => send({ type: 'revealDashboard' }) });
 onBeforeExit(stopAgents);
 
 onMessage((msg) => {
