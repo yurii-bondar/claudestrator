@@ -72,6 +72,12 @@ test('a panel made quietly (for a page already on screen) is not brought forward
   assert.equal(h.reveals(), 0);
 });
 
+test('a status bar message shows on the page, as a toast', () => {
+  const h = fakeHost();
+  shim.window.setStatusBarMessage('report.md links images on the web: opened as text');
+  assert.deepEqual(h.posts, [{ type: 'toast', kind: 'info', text: 'report.md links images on the web: opened as text' }]);
+});
+
 test('a terminal: opened through the host, closed when the host says its process ended', async () => {
   const h = fakeHost();
   const closed: (number | undefined)[] = [];

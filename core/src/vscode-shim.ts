@@ -381,6 +381,11 @@ const window = {
   },
   createTerminal: (options: TerminalOptions): Terminal => new Terminal(options),
   onDidCloseTerminal: closeListeners.event,
+  /** There is no status bar: the page shows it as a toast, which goes away by itself. */
+  setStatusBarMessage: (text: string): Disposable => {
+    current().post({ type: 'toast', kind: 'info', text });
+    return { dispose: () => undefined };
+  },
 };
 
 const languages = {
