@@ -229,3 +229,33 @@ test('task list: an issue task gets a chip with its reference that opens the iss
   for (const kind of ['gitlab', 'linear']) assert.ok((await b.eval(`window.CS.sourceChip({ kind: '${kind}', label: 'x' })`)).includes(await b.eval(`window.CS.icon('issue')`)), kind);
   assert.ok((await b.eval(`window.CS.sourceChip({ kind: 'jira', label: 'CP-1' })`)).includes(await b.eval(`window.CS.icon('jira')`)), 'Jira keeps its own');
 });
+
+/**
+ * A button pressed while its region is drawn anew (an agent's push lands, a task card moves): with the mouse, through
+ * Chrome's input, as a person clicks. Reports whether the page heard the click, and what the region shows after.
+ */
+async function clickWhileRedrawn() {
+  await b.eval(`(() => {
+    window.__clicks = 0;
+    window.CS.actions['ui-probe'] = () => void window.__clicks++;
+    document.getElementById('ui-probe-host')?.remove();
+    document.body.insertAdjacentHTML('beforeend', '<div id="ui-probe-host" data-region="ui-probe" style="position:fixed;top:0;left:0;z-index:9999"></div>');
+    window.CS.patch('ui-probe', '<button data-action="ui-probe" style="width:120px;height:40px">one</button>');
+    return true;
+  })()`);
+  const at = { x: 60, y: 20, button: 'left', clickCount: 1 };
+  await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+  await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
+  await b.eval(`window.CS.patch('ui-probe', '<button data-action="ui-probe" style="width:120px;height:40px">two</button>'); true`);
+  await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
+  await b.sleep(50);
+  const result = { clicks: await b.eval('window.__clicks'), text: await textOf(`document.querySelector('[data-region="ui-probe"]')`) };
+  await b.eval(`document.getElementById('ui-probe-host').remove(); delete window.CS.actions['ui-probe']; true`);
+  return result;
+}
+
+test('clicks: a button whose region is drawn anew between the press and the release still gets the click', async () => {
+  const r = await clickWhileRedrawn();
+  assert.equal(r.clicks, 1, 'the click went through');
+  assert.equal(r.text, 'two', 'and the region shows what it was drawn with, once the click is done');
+});

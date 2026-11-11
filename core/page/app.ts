@@ -327,6 +327,29 @@ interface Views {
   /** The HTML each region was last given, to skip a patch that would change nothing. */
   const rendered = new WeakMap<HTMLElement, string>();
 
+  /**
+   * A click is a press and a release on one element. A region drawn anew in between (an agent's push lands, a task
+   * card moves, the checks come back) replaces that element, and the browser drops the click: the button "needs a
+   * second click". While the pointer is pressed in a region, what it would be drawn with waits here, and goes in
+   * once the click has been handled; a newer drawing of the region replaces what waits.
+   */
+  let pressed: Element | null = null;
+  const held = new Map<HTMLElement, string>();
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button === 0) pressed = e.target instanceof Element ? e.target : null;
+  }, true);
+  // The click is dispatched with the release, before a timer: by then the click's own drawing has gone in.
+  const release = () => {
+    if (!pressed) return;
+    pressed = null;
+    if (held.size) setTimeout(() => {
+      for (const [el, html] of [...held]) patch(el, html);
+    }, 0);
+  };
+  // A drag that starts is no click: the drop draws its region at once.
+  for (const type of ['pointerup', 'pointercancel', 'dragstart'] as const) document.addEventListener(type, release, true);
+  window.addEventListener('blur', release);
+
   /** The attributes that tell an element from its neighbours, such as a task card (`data-id`) from the others. */
   const IDENTITY = ['key', 'action', 'id', 'name', 'tab', 'option', 'file'];
   /**
@@ -353,6 +376,12 @@ interface Views {
   function patch(name: string | HTMLElement, html: string) {
     const el = typeof name === 'string' ? $(`[data-region="${name}"]`) : name;
     if (!el) return false;
+    if (pressed && el.contains(pressed)) {
+      // Drawn now, the element under the pointer would go, and with it the click: after the release, then.
+      held.set(el, html);
+      return rendered.get(el) !== html;
+    }
+    held.delete(el);
     if (rendered.get(el) === html) return false;
     const active = document.activeElement;
     let key: string | null = null;
