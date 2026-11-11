@@ -9,7 +9,7 @@
     "baseUrl": ".",
     "paths": {
       "vscode": ["../../vscode/node_modules/@types/vscode"],
-      "yaml": ["../../vscode/node_modules/yaml"]
+      "yaml": ["../../core/node_modules/yaml"]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,

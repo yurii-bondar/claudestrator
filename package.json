@@ -16,8 +16,13 @@
   },
   "scripts": {
     "prepare": "husky",
+    "release": "node scripts/release.mjs",
     "release:build": "node scripts/release.mjs build",
     "release:test": "node scripts/release.mjs test",
-    "release:live": "node scripts/release.mjs live"
+    "release:live": "node scripts/release.mjs live",
+    "release:vsix": "node scripts/release.mjs test vsix",
+    "release:jetbrains": "node scripts/release.mjs test jetbrains",
+    "release:desktop": "node scripts/release.mjs test desktop",
+    "release:all": "node scripts/release.mjs test all"
   }
 }

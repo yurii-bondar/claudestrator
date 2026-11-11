@@ -6,8 +6,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { Engine } from '../src/core/engine';
-import type { PermissionRequest } from '../src/core/wire';
+import type { Engine } from '../../core/src/engine';
+import type { PermissionRequest } from '../../core/src/wire';
 
 // orchestrator.ts loads `vscode`; these methods never reach it.
 /* eslint-disable @typescript-eslint/no-require-imports */

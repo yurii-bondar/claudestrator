@@ -16,8 +16,8 @@ object PageHtml {
     /** `sendToEngine` is the JS that hands the string `s` to the plugin (JBCefJSQuery.inject). */
     fun build(engineDir: Path, sendToEngine: String): String {
         val nonce = ByteArray(16).also { SecureRandom().nextBytes(it) }.let { Base64.getEncoder().encodeToString(it) }
-        val css = read(engineDir.resolve("media/app.css"))
-        val scripts = SCRIPTS.joinToString("\n") { "<script nonce=\"$nonce\">${escapeScript(read(engineDir.resolve("dist/media/$it")))}</script>" }
+        val css = read(engineDir.resolve("dist/page/app.css"))
+        val scripts = SCRIPTS.joinToString("\n") { "<script nonce=\"$nonce\">${escapeScript(read(engineDir.resolve("dist/page/$it")))}</script>" }
         return """<!DOCTYPE html>
 <html lang="en">
 <head>

@@ -5,9 +5,9 @@ import * as shim from './vscode-shim';
 import type { Incoming } from './protocol';
 import { Orchestrator } from '../../../vscode/src/orchestrator';
 import { DashboardPanel } from '../../../vscode/src/panel';
-import * as view from '../../../vscode/src/core/view';
-import { CHECKPOINT_TITLE } from '../../../vscode/src/core/describe';
-import type { Route } from '../../../vscode/src/core/wire';
+import * as view from '../../../core/src/view';
+import { CHECKPOINT_TITLE } from '../../../core/src/describe';
+import type { Route } from '../../../core/src/wire';
 
 // Recursive file watching, which the engine relies on, works on Linux only from Node 20.
 const MIN_NODE_MAJOR = 20;

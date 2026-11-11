@@ -2,12 +2,14 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".."
   },
   "include": [
     "extension.ts",
     "src/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "../core/src/**/*.ts",
+    "../core/test/fixtures/*.ts"
   ],
   "exclude": [
     "media",

@@ -1,6 +1,6 @@
 name: Release
 
-# Paused: extensions are published by hand for now. To turn it back on, restore:
+# Paused: releases are made by hand with scripts/release.mjs for now. To turn it back on, restore:
 #   push:
 #     branches: [main]
 on:
@@ -32,16 +32,12 @@ jobs:
       - name: Install release tooling
         run: npm ci
 
-      - name: Install extension dependencies and run tests
+      - name: Install dependencies and run tests
         run: |
-          for dir in */; do
-            dir="${dir%/}"
-            [ -f "$dir/release.config.cjs" ] || continue
-            echo "::group::$dir"
-            if [ -f "$dir/package-lock.json" ]; then npm ci --prefix "$dir"; fi
-            npm test --prefix "$dir" --if-present
-            echo "::endgroup::"
-          done
+          npm ci --prefix core
+          npm ci --prefix vscode
+          npm test --prefix core
+          npm test --prefix vscode
 
       # Extensions are released one after another in the same checkout, so each
       # release commit lands on top of the previous one and pushes never race.

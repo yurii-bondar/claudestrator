@@ -32,16 +32,27 @@ jobs:
           cache: npm
           cache-dependency-path: '**/package-lock.json'
 
-      - name: Typecheck, lint, test and package every extension
+      # vscode/ compiles core/ into its own build, so core's dependencies come first.
+      - name: Install dependencies
         run: |
-          for dir in */; do
-            dir="${dir%/}"
-            [ -f "$dir/release.config.cjs" ] || continue
+          npm ci --prefix core
+          npm ci --prefix vscode
+          npm ci --prefix jetbrains/sidecar
+
+      - name: Typecheck, lint and test the core and the extension
+        run: |
+          for dir in core vscode; do
             echo "::group::$dir"
-            if [ -f "$dir/package-lock.json" ]; then npm ci --prefix "$dir"; fi
-            npm run typecheck --prefix "$dir" --if-present
-            npm run lint --prefix "$dir" --if-present
-            npm test --prefix "$dir" --if-present
-            (cd "$dir" && npx --yes @vscode/vsce@3 package --out /tmp/)
+            npm run typecheck --prefix "$dir"
+            npm run lint --prefix "$dir"
+            npm test --prefix "$dir"
             echo "::endgroup::"
           done
+
+      - name: Typecheck and build the JetBrains sidecar
+        run: |
+          npm run typecheck --prefix jetbrains/sidecar
+          npm run build --prefix jetbrains/sidecar
+
+      - name: Package the extension
+        run: (cd vscode && npx --yes @vscode/vsce@3 package --out /tmp/)

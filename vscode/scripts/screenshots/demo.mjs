@@ -14,7 +14,7 @@ export const TASK = 'Add input validation to the signup form: email format, a pa
 /** The preview harness on `port`, its fake agent waiting `delay` ms per tool call. */
 export function startPreview({ port, delay = 1400 }) {
   const home = mkdtempSync(path.join(os.tmpdir(), 'cs-shots-home-'));
-  const proc = spawn(process.execPath, [path.join(ROOT, 'dist', 'test', 'harness', 'server.js')], {
+  const proc = spawn(process.execPath, [path.join(ROOT, 'dist', 'vscode', 'test', 'harness', 'server.js')], {
     cwd: ROOT,
     env: { ...process.env, HOME: home, USERPROFILE: home, PREVIEW_SETUP: '1', PREVIEW_DELAY: String(delay), PREVIEW_PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe'],

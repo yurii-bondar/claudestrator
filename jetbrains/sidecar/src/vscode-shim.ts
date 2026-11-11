@@ -1,4 +1,4 @@
-// A stand-in for the `vscode` module, only as much of it as the Claudestrator engine (claudestrator/src/orchestrator.ts
+// A stand-in for the `vscode` module, only as much of it as the Claudestrator engine (vscode/src/orchestrator.ts
 // and panel.ts) touches. Anything that needs an editor (dialogs, opening a file, terminals, secrets) is asked of the
 // IDE plugin over the transport; settings and file watching live here. The engine's code is not modified.
 import * as fs from 'node:fs';
