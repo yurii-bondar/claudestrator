@@ -19,7 +19,7 @@ component instances).
 1. The preview, configured, with the fake agent quick (from `vscode/`):
 
    ```sh
-   npm run build && PREVIEW_SETUP=1 PREVIEW_DELAY=50 node dist/test/harness/server.js
+   npm run build && PREVIEW_SETUP=1 PREVIEW_DELAY=50 node dist/vscode/test/harness/server.js
    ```
 
 2. Capture (Chrome is found on macOS, Linux and Windows; else set `CHROME`). The first run starts the sample task the

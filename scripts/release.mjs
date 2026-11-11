@@ -16,12 +16,13 @@
 //   builds and verifies the artifact, then commits `chore(release): <tag> [skip ci]` and tags it, as semantic-release
 //   does, so the next run (or CI, once turned back on) starts from there. Nothing is pushed or published.
 //
-// Usage (from the repo root): node scripts/release.mjs [build|test|live] [--only <target>] [--dry-run] [--force]
+// Usage (from the repo root): node scripts/release.mjs [build|test|live] [<target>…] [--dry-run] [--force]
 //   build      build and verify what is due (the default)
-//   test       typecheck, lint and every test first (of each extension due, the sidecar and plugin), then build
+//   test       typecheck, lint and every test first (core, the extension, and the sidecar and plugin if due), then build
 //   live       the tests, then two real Claudestrator tasks on haiku at low effort (npm run test:live: a delivery and a
 //              scenario with Parallel, You approve and Branch; a few cents), then build
-//   --only     one target: vscode or jetbrains
+//   <target>   vsix (the VS Code extension), jetbrains (the plugin), desktop (the desktop app, not in the repo yet),
+//              or all; several may be named. None: all of them.
 //   --dry-run  build and verify, then put the version files back: no commit, no tag
 //   --force    build a target with nothing due at its last released version (no commit, no tag)
 import { spawnSync } from 'node:child_process';
@@ -33,6 +34,7 @@ import { analyzeCommits } from '@semantic-release/commit-analyzer';
 import { generateNotes } from '@semantic-release/release-notes-generator';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CORE = path.join(ROOT, 'core');
 const EXTENSION = path.join(ROOT, 'vscode');
 const PLUGIN = path.join(ROOT, 'jetbrains');
 const SIDECAR = path.join(PLUGIN, 'sidecar');
@@ -48,7 +50,8 @@ const extension = (dir, name, label, ships = []) => ({
   dir,
   name,
   tagPrefix: `${name}-v`,
-  paths: [dir],
+  // The extension compiles the core into its own build.
+  paths: [dir, 'core'],
   versionFiles: [`${dir}/package.json`, `${dir}/package-lock.json`],
   changelog: `${dir}/CHANGELOG.md`,
   /** Files the .vsix must hold besides its main script, icon and readme. */
@@ -56,12 +59,12 @@ const extension = (dir, name, label, ships = []) => ({
 });
 
 const TARGETS = {
-  vscode: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['extension/dist/media/app.js', 'extension/dist/media/task.js', 'extension/dist/media/diagram-model.js', 'extension/dist/media/diagram-canvas.js', 'extension/dist/media/diagram-side.js', 'extension/dist/media/diagram.js', 'extension/dist/media/config.js', 'extension/dist/media/markdown.js', 'extension/dist/media/stream.js', 'extension/media/app.css']),
+  vsix: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'config.js', 'markdown.js', 'stream.js', 'app.css', 'tab-icon-orchestra.svg'].map((f) => `extension/dist/page/${f}`)),
   jetbrains: {
     kind: 'jetbrains',
     label: 'Claudestrator (JetBrains)',
     tagPrefix: 'jetbrains-claudestrator-v',
-    paths: ['jetbrains', 'vscode'],
+    paths: ['jetbrains', 'vscode', 'core'],
     versionFiles: ['jetbrains/gradle.properties'],
     changelog: 'jetbrains/CHANGELOG.md',
   },
@@ -70,20 +73,22 @@ const TARGETS = {
 // ---------- command line ----------
 
 function parseArgs(argv) {
-  const opts = { mode: 'build', only: null, dryRun: false, force: false };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
+  const opts = { mode: 'build', targets: [], dryRun: false, force: false };
+  for (const a of argv) {
     if (['build', 'test', 'live'].includes(a)) opts.mode = a;
-    else if (a === '--only') opts.only = argv[++i];
-    else if (a.startsWith('--only=')) opts.only = a.slice('--only='.length);
+    else if (a === 'all') opts.targets.push(...Object.keys(TARGETS));
+    else if (TARGETS[a]) opts.targets.push(a);
+    else if (a === 'desktop') throw new Error('desktop: the desktop app is not in this repo yet; its target comes with it');
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--force') opts.force = true;
     else if (a === '-h' || a === '--help') {
-      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
+      const lines = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1);
+      console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith('//'))).map((l) => l.slice(3)).join('\n'));
       process.exit(0);
-    } else throw new Error(`unknown argument ${a} (see --help)`);
+    } else throw new Error(`unknown argument ${a}: a mode (build, test, live), a target (${Object.keys(TARGETS).join(', ')}, all) or a flag (see --help)`);
   }
-  if (opts.only && !TARGETS[opts.only]) throw new Error(`--only takes ${Object.keys(TARGETS).join(' or ')}, not ${opts.only}`);
+  if (!opts.targets.length) opts.targets = Object.keys(TARGETS);
+  opts.targets = [...new Set(opts.targets)];
   return opts;
 }
 
@@ -297,7 +302,7 @@ function verifyExtension(target, vsix, version) {
   for (const need of needed) {
     if (!entries.some((e) => e.toLowerCase() === need.toLowerCase())) problems.push(`${need} is missing`);
   }
-  const stray = entries.filter((e) => /^extension\/(src|test|dist\/test)\//.test(e) || (/\.ts$/.test(e) && !/\.d\.ts$/.test(e)) || /(^|\/)(\.env|\.orch\/|\.claudestrator\/)/.test(e));
+  const stray = entries.filter((e) => /^extension\/(src|test|dist\/(vscode|core)\/test)\//.test(e) || (/\.ts$/.test(e) && !/\.d\.ts$/.test(e)) || /(^|\/)(\.env|\.orch\/|\.claudestrator\/)/.test(e));
   if (stray.length) problems.push(`it ships what it should not: ${stray.slice(0, 5).join(', ')}${stray.length > 5 ? '…' : ''}`);
   const size = fs.statSync(vsix).size;
   if (size > 20 * 1024 * 1024) problems.push(`it is ${(size / 1024 / 1024).toFixed(1)} MB`);
@@ -337,7 +342,7 @@ function verifyPlugin(zip, version) {
   if (!entries.some((e) => e.startsWith('claudestrator/engine/'))) problems.push('the engine is missing');
   const scripts = pageScripts();
   if (scripts.jetbrains.join() !== scripts.vscode.join()) problems.push(`its dashboard loads ${scripts.jetbrains.join(', ')}, where VS Code loads ${scripts.vscode.join(', ')} (PageHtml.kt SCRIPTS, panel.ts PAGE_SCRIPTS)`);
-  for (const name of scripts.jetbrains) if (!entries.includes(`claudestrator/engine/dist/media/${name}`)) problems.push(`the engine has no dist/media/${name}`);
+  for (const name of scripts.jetbrains) if (!entries.includes(`claudestrator/engine/dist/page/${name}`)) problems.push(`the engine has no dist/page/${name}`);
   if (!problems.length) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-release-jar-'));
     try {
@@ -375,13 +380,13 @@ function withOwnTemp(fn) {
   }
 }
 
-/** The extension folders whose tests a release of these targets needs: the plugin bundles the extension's engine and page. */
-const extensionDirs = (targets) => [...new Set(targets.map((t) => (t.kind === 'vscode' ? t.dir : 'vscode')))];
+/** The folders whose tests every release needs: both targets ship the core, and the plugin the extension's host code. */
+const TESTED = ['core', 'vscode'];
 
 function runTests(opts, due) {
   const targets = due.map((d) => d.target);
   withOwnTemp((env) => {
-    for (const dir of extensionDirs(targets)) {
+    for (const dir of TESTED) {
       const cwd = path.join(ROOT, dir);
       step(`Typecheck ${dir}`, npm, ['run', 'typecheck'], { cwd, env });
       step(`Lint ${dir}`, npm, ['run', 'lint'], { cwd, env });
@@ -391,14 +396,14 @@ function runTests(opts, due) {
       step('Typecheck the plugin sidecar', npm, ['run', 'typecheck'], { cwd: SIDECAR, env });
       step('Check the JetBrains plugin', gradlew, ['check', '--console=plain'], { cwd: PLUGIN, env });
     }
-    if (opts.mode === 'live' && extensionDirs(targets).includes('vscode')) step('Run two real tasks on haiku, low effort (npm run test:live)', npm, ['run', 'test:live'], { cwd: EXTENSION, env });
+    if (opts.mode === 'live') step('Run two real tasks on haiku, low effort (npm run test:live)', npm, ['run', 'test:live'], { cwd: CORE, env });
   });
 }
 
 // ---------- the run ----------
 
 function preflight(targets, opts) {
-  const dirs = extensionDirs(targets.map((t) => TARGETS[t])).map((d) => path.join(ROOT, d));
+  const dirs = TESTED.map((d) => path.join(ROOT, d));
   for (const dir of [...dirs, ...(targets.includes('jetbrains') ? [SIDECAR] : [])]) {
     if (!fs.existsSync(path.join(dir, 'node_modules'))) throw new Error(`${path.relative(ROOT, dir)} has no node_modules: run npm ci there first`);
   }
@@ -413,7 +418,7 @@ function preflight(targets, opts) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const names = opts.only ? [opts.only] : Object.keys(TARGETS);
+  const names = opts.targets;
   preflight(names, opts);
 
   const plans = [];

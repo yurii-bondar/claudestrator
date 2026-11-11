@@ -77,28 +77,20 @@ intellijPlatform {
 }
 
 val npm = if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm"
+val coreDir = layout.projectDirectory.dir("../core")
 val extensionDir = layout.projectDirectory.dir("../vscode")
 val sidecarDir = layout.projectDirectory.dir("sidecar")
 
-// The webview scripts are the VS Code extension's own build output; the sidecar bundles the engine around them.
-val buildExtension by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Builds vscode/ (the webview scripts and the engine's types)."
-    workingDir = extensionDir.asFile
-    commandLine(npm, "run", "build")
-    inputs.files(extensionDir.asFileTree.matching { include("package-lock.json", "extension.ts", "src/**", "media/**", "tsconfig*.json") })
-    outputs.dir(extensionDir.dir("dist/media"))
-}
-
+// The engine (core/src) with the extension's host code (vscode/src) and the dashboard page (core/page), bundled by the
+// sidecar's build. It needs `npm ci` in core/ and sidecar/ once.
 val buildSidecar by tasks.registering(Exec::class) {
     group = "build"
-    description = "Bundles the engine and the stdio bridge into sidecar/dist/engine."
-    dependsOn(buildExtension)
+    description = "Bundles the engine, the page and the stdio bridge into sidecar/dist/engine."
     workingDir = sidecarDir.asFile
     commandLine(npm, "run", "build")
     inputs.files(sidecarDir.asFileTree.matching { include("package-lock.json", "build.mjs", "src/**") })
-    inputs.dir(extensionDir.dir("dist/media"))
-    inputs.files(extensionDir.asFileTree.matching { include("src/**", "media/**") })
+    inputs.files(coreDir.asFileTree.matching { include("package-lock.json", "src/**", "page/**", "scripts/**") })
+    inputs.files(extensionDir.asFileTree.matching { include("src/**") })
     outputs.dir(sidecarDir.dir("dist/engine"))
 }
 

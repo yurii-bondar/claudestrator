@@ -2,5 +2,4 @@ node_modules/
 *.vsix
 .orch/
 dist/
-.eval/
 scripts/design-sync/out/

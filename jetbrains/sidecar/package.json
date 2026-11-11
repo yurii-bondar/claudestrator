@@ -2,7 +2,7 @@
   "name": "claudestrator-jetbrains-sidecar",
   "private": true,
   "version": "0.0.0",
-  "description": "Runs the Claudestrator engine from ../../vscode outside VS Code. The JetBrains plugin starts it as a Node process and talks to it over stdio.",
+  "description": "Runs the Claudestrator engine (../../core, with the host code of ../../vscode) outside VS Code. The JetBrains plugin starts it as a Node process and talks to it over stdio.",
   "license": "MIT",
   "scripts": {
     "build": "node build.mjs",
