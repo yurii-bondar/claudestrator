@@ -1,0 +1,58 @@
+name: CI
+
+# Paused for now. To turn it back on, restore:
+#   pull_request:
+#     branches: [main]
+#     types: [opened, edited, synchronize, reopened]
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # With squash merges the PR title becomes the commit on main, and
+  # semantic-release reads that commit to decide the next version.
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      # vscode/ compiles core/ into its own build, so core's dependencies come first.
+      - name: Install dependencies
+        run: |
+          npm ci --prefix core
+          npm ci --prefix vscode
+          npm ci --prefix jetbrains/sidecar
+
+      - name: Typecheck, lint and test the core and the extension
+        run: |
+          for dir in core vscode; do
+            echo "::group::$dir"
+            npm run typecheck --prefix "$dir"
+            npm run lint --prefix "$dir"
+            npm test --prefix "$dir"
+            echo "::endgroup::"
+          done
+
+      - name: Typecheck and build the JetBrains sidecar
+        run: |
+          npm run typecheck --prefix jetbrains/sidecar
+          npm run build --prefix jetbrains/sidecar
+
+      - name: Package the extension
+        run: (cd vscode && npx --yes @vscode/vsce@3 package --out /tmp/)

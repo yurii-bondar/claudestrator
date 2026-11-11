@@ -2,24 +2,24 @@
 // for the tree, the status bar and the dashboard.
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { Engine } from './core/engine';
-import { exists } from './core/files';
-import { ClaudeRunner, sameWindows } from './core/runner';
-import { HookServer } from './core/hookserver';
-import { setChildEnv, getChildEnv } from './core/git';
-import { resolveDefaults } from './core/defaults';
-import * as mcp from './core/mcp';
-import { exec } from './core/git';
-import { AtlassianClient } from './core/intake';
-import { BitbucketClient } from './core/bitbucket';
+import { Engine } from '../../core/src/engine';
+import { exists } from '../../core/src/files';
+import { ClaudeRunner, sameWindows } from '../../core/src/runner';
+import { HookServer } from '../../core/src/hookserver';
+import { setChildEnv, getChildEnv } from '../../core/src/git';
+import { resolveDefaults } from '../../core/src/defaults';
+import * as mcp from '../../core/src/mcp';
+import { exec } from '../../core/src/git';
+import { AtlassianClient } from '../../core/src/intake';
+import { BitbucketClient } from '../../core/src/bitbucket';
 import * as os from 'os';
-import { probe, expand, accountLabel, statuslineSnapshot, claudeAccounts } from './core/env';
-import { projectConfigFile, loadConfig, type ResolveResult } from './core/config';
-import type { Defaults } from './core/defaults';
-import type { Probe, StatuslineSnapshot } from './core/env';
-import type { TaskEntry } from './core/view';
-import type { Diagnostic } from './core/types';
-import type { Account, AccountEntry, EngineEvent, LimitWindow, StoredLimits, PermissionRequest } from './core/wire';
+import { probe, expand, accountLabel, statuslineSnapshot, claudeAccounts } from '../../core/src/env';
+import { projectConfigFile, loadConfig, type ResolveResult } from '../../core/src/config';
+import type { Defaults } from '../../core/src/defaults';
+import type { Probe, StatuslineSnapshot } from '../../core/src/env';
+import type { TaskEntry } from '../../core/src/view';
+import type { Diagnostic } from '../../core/src/types';
+import type { Account, AccountEntry, EngineEvent, LimitWindow, StoredLimits, PermissionRequest } from '../../core/src/wire';
 
 /** Which account the agents use and why: from settings and the environment, without reading a file. */
 type AccountChoice = Pick<Account, 'dir' | 'shownDir' | 'label' | 'source' | 'sourceText'>;

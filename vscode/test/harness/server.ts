@@ -12,10 +12,11 @@ import type * as vscodeApi from 'vscode';
 // The stub below is loaded before the modules that `require('vscode')`, so they are required, not imported.
 /* eslint-disable @typescript-eslint/no-require-imports */
 
-// Runs from the build output (dist/test/harness): `DIST` is the compiled tree, `ROOT` the extension folder.
-const DIST = path.resolve(__dirname, '..', '..');
+// Runs from the build output (dist/vscode/test/harness): `DIST` is the compiled tree (the extension's and the core's),
+// `ROOT` the extension folder.
+const DIST = path.resolve(__dirname, '..', '..', '..');
 const ROOT = path.resolve(DIST, '..');
-const FAKE = path.join(DIST, 'test', 'fixtures', 'fake-claude.js');
+const FAKE = path.join(DIST, 'core', 'test', 'fixtures', 'fake-claude.js');
 // tsc writes it without the executable bit, and agents run it as a program.
 fs.chmodSync(FAKE, 0o755);
 const PORT = Number(process.env.PREVIEW_PORT || 4780);
@@ -166,8 +167,8 @@ moduleLoader._load = function (this: unknown, request: string, ...rest: unknown[
 };
 
 // Loaded only now: they `require('vscode')`, which the loader above answers with the stub.
-const { Orchestrator } = require(path.join(DIST, 'src', 'orchestrator.js')) as typeof import('../../src/orchestrator');
-const { DashboardPanel } = require(path.join(DIST, 'src', 'panel.js')) as typeof import('../../src/panel');
+const { Orchestrator } = require(path.join(DIST, 'vscode', 'src', 'orchestrator.js')) as typeof import('../../src/orchestrator');
+const { DashboardPanel } = require(path.join(DIST, 'vscode', 'src', 'panel.js')) as typeof import('../../src/panel');
 
 const secrets = new Map<string, unknown>();
 const context = {
@@ -191,7 +192,7 @@ const broadcast = (msg: unknown) => {
   await orch.init();
   await orch.ensureReady();
   if (process.env.PREVIEW_SETUP) {
-    const { createProjectConfig } = require(path.join(DIST, 'src', 'core', 'config.js')) as typeof import('../../src/core/config');
+    const { createProjectConfig } = require(path.join(DIST, 'core', 'src', 'config.js')) as typeof import('../../../core/src/config');
     // Checks run in the sandbox, which writes only in the repo and its own temp folder: the flaky gate's mark goes there.
     const flaky = `cs-flaky-${path.basename(ws)}`;
     await createProjectConfig(ws, { repos: { api: { gates: [{ name: 'lint', cmd: 'true' }] }, web: { gates: [{ name: 'flaky', cmd: `test -f "\${TMPDIR:-/tmp}/${flaky}" || { touch "\${TMPDIR:-/tmp}/${flaky}"; echo "lint: 1 error in pages/index.vue"; exit 1; }` }] } } });
@@ -246,9 +247,10 @@ const broadcast = (msg: unknown) => {
         return;
       }
       if (req.url!.startsWith('/media/')) {
-        // Styles and icons are served from media/, the compiled scripts from dist/media.
+        // The page as the build lays it out (dist/page), the extension's own icons from media/.
         const name = path.basename(req.url!);
-        const file = path.join(ROOT, name.endsWith('.js') ? path.join('dist', 'media') : 'media', name);
+        const built = path.join(DIST, 'page', name);
+        const file = fs.existsSync(built) ? built : path.join(ROOT, 'media', name);
         if (!fs.existsSync(file)) {
           res.writeHead(404).end();
           return;

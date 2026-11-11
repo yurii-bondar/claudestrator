@@ -12,7 +12,7 @@ import { launch } from '../design-sync/cdp.mjs';
 import { ROOT, TASK, WORDING, card, openDemo, reviewersAtOnce, startPreview, until } from './demo.mjs';
 
 const OUT = path.join(ROOT, 'media', 'screenshots');
-const JETBRAINS_OUT = path.resolve(ROOT, '..', 'jetbrains', 'claudestrator', 'marketplace', 'screenshots');
+const JETBRAINS_OUT = path.resolve(ROOT, '..', 'jetbrains', 'marketplace', 'screenshots');
 const PORT = 4781;
 const URL_ = `http://127.0.0.1:${PORT}/`;
 const W = 1200, H = 750, SCALE = 2;

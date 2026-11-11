@@ -8,8 +8,8 @@
   "author": "Yurii Bondar",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yurii-bondar/vs-code-extensions.git",
-    "directory": "claudestrator"
+    "url": "https://github.com/yurii-bondar/claudestrator.git",
+    "directory": "vscode"
   },
   "engines": {
     "vscode": "^1.101.0"
@@ -52,11 +52,11 @@
     "color": "#1f1f1f",
     "theme": "dark"
   },
-  "homepage": "https://github.com/yurii-bondar/vs-code-extensions/tree/main/claudestrator#readme",
+  "homepage": "https://github.com/yurii-bondar/claudestrator#readme",
   "bugs": {
-    "url": "https://github.com/yurii-bondar/vs-code-extensions/issues"
+    "url": "https://github.com/yurii-bondar/claudestrator/issues"
   },
-  "main": "./dist/extension.js",
+  "main": "./dist/vscode/extension.js",
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
@@ -69,16 +69,13 @@
     "workspaceContains:*/.claudestrator/config.yaml"
   ],
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && tsc -p tsconfig.webview.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && node ../core/scripts/build-page.mjs dist/page",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "npm run build && node --test dist/test/*.test.js",
-    "test:live": "npm run build && node dist/test/live/smoke.js && node dist/test/live/blocks.js",
+    "test": "npm run build && node --test dist/vscode/test/*.test.js",
     "test:ui": "node --test --test-timeout=240000 test/ui/*.mjs",
-    "test:live:forges": "npm run build && node dist/test/live/forges.js",
-    "eval": "npm run build && node dist/test/live/eval.js",
     "package": "npx @vscode/vsce package",
-    "preview": "npm run build && node dist/test/harness/server.js",
+    "preview": "npm run build && node dist/vscode/test/harness/server.js",
     "vscode:prepublish": "npm run build"
   },
   "contributes": {

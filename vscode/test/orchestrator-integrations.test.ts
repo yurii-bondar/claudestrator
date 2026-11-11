@@ -3,7 +3,7 @@ import test from 'node:test';
 import * as assert from 'node:assert/strict';
 import Module from 'module';
 
-import type { McpServer } from '../src/core/wire';
+import type { McpServer } from '../../core/src/wire';
 
 /** VS Code's settings and secret storage, as far as these methods use them. */
 const values = new Map<string, unknown>();

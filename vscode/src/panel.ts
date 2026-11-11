@@ -5,27 +5,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as os from 'os';
-import * as view from './core/view';
-import type { OutputPush } from './core/view';
-import { exists } from './core/files';
-import * as cfg from './core/config';
-import * as backups from './core/backup';
-import * as libraries from './core/library';
-import { buildPipeline, fixedFlow, outline, scenarioPipeline, taskPipeline, fitsScenario } from './core/pipeline';
-import { editableFrom } from './core/machine';
-import { flowOf } from './core/flow';
-import { taskRepos, taskDiff, launch, getChildEnv } from './core/git';
-import { findRepos, describeRepo, reposFromFolders, repoLayerOf, WORKSPACE_MAP, safeName } from './core/setup';
-import { expand } from './core/env';
-import { effectiveFor } from './core/defaults';
-import { AGENT_COLORS, OUTPUTS, EFFORTS, validateSetting } from './core/protocol';
-import { parsePageRequest, openable, SESSION_ID } from './core/requests';
-import { fixProblem, fixableCheckpoint, fixDirs, fixPrompt, fixArgs } from './core/fix';
+import * as view from '../../core/src/view';
+import type { OutputPush } from '../../core/src/view';
+import { exists } from '../../core/src/files';
+import * as cfg from '../../core/src/config';
+import * as backups from '../../core/src/backup';
+import * as libraries from '../../core/src/library';
+import { buildPipeline, fixedFlow, outline, scenarioPipeline, taskPipeline, fitsScenario } from '../../core/src/pipeline';
+import { editableFrom } from '../../core/src/machine';
+import { flowOf } from '../../core/src/flow';
+import { taskRepos, taskDiff, launch, getChildEnv } from '../../core/src/git';
+import { findRepos, describeRepo, reposFromFolders, repoLayerOf, WORKSPACE_MAP, safeName } from '../../core/src/setup';
+import { expand } from '../../core/src/env';
+import { effectiveFor } from '../../core/src/defaults';
+import { AGENT_COLORS, OUTPUTS, EFFORTS, validateSetting } from '../../core/src/protocol';
+import { parsePageRequest, openable, SESSION_ID } from '../../core/src/requests';
+import { fixProblem, fixableCheckpoint, fixDirs, fixPrompt, fixArgs } from '../../core/src/fix';
 import { settings, type Orchestrator } from './orchestrator';
-import type { Engine } from './core/engine';
-import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, TaskScreen } from './core/wire';
-import type { Agent, Effort, ScenarioStep, Gate, TaskState } from './core/types';
-import type { ConfigLayer, RepoLayer } from './core/config';
+import type { Engine } from '../../core/src/engine';
+import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, TaskScreen } from '../../core/src/wire';
+import type { Agent, Effort, ScenarioStep, Gate, TaskState } from '../../core/src/types';
+import type { ConfigLayer, RepoLayer } from '../../core/src/config';
 
 /** A repo as the page sends it back from the setup wizard or the detected list. */
 interface PickedRepo {
@@ -90,16 +90,15 @@ class DashboardPanel implements RpcHandlers {
     this.orch = orch;
     this.initialRoute = route;
     this.disposables = [];
-    const media = vscode.Uri.joinPath(context.extensionUri, 'media');
-    // The page's scripts are compiled from media/*.ts into dist/media.
-    const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'media');
+    // The page (core/page) as the build lays it out: its compiled scripts, stylesheet and tab icon.
+    const page = vscode.Uri.joinPath(context.extensionUri, 'dist', 'page');
     this.panel = vscode.window.createWebviewPanel('claudestrator.dashboard', 'Claudestrator', vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [media, scripts],
+      localResourceRoots: [page],
     });
-    this.panel.iconPath = vscode.Uri.joinPath(media, 'tab-icon-orchestra.svg');
-    this.panel.webview.html = this.html(media, scripts);
+    this.panel.iconPath = vscode.Uri.joinPath(page, 'tab-icon-orchestra.svg');
+    this.panel.webview.html = this.html(page);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.onDidChangeViewState((e) => {
       // What changed while the panel was hidden is refreshed once, as it shows again.
@@ -957,11 +956,11 @@ class DashboardPanel implements RpcHandlers {
     return client.myself();
   }
 
-  html(media: vscode.Uri, scripts: vscode.Uri): string {
+  html(page: vscode.Uri): string {
     const webview = this.panel.webview;
     const nonce = crypto.randomBytes(16).toString('base64');
-    const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'app.css'));
-    const tags = PAGE_SCRIPTS.map((name) => `  <script nonce="${nonce}" src="${webview.asWebviewUri(vscode.Uri.joinPath(scripts, name))}"></script>`).join('\n');
+    const css = webview.asWebviewUri(vscode.Uri.joinPath(page, 'app.css'));
+    const tags = PAGE_SCRIPTS.map((name) => `  <script nonce="${nonce}" src="${webview.asWebviewUri(vscode.Uri.joinPath(page, name))}"></script>`).join('\n');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>

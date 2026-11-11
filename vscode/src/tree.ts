@@ -1,6 +1,6 @@
 // Sidebar: tasks by the epic, story or group they belong to; each task's icon says what it needs from you.
 import * as vscode from 'vscode';
-import * as view from './core/view';
+import * as view from '../../core/src/view';
 import type { Orchestrator } from './orchestrator';
 
 /** A row of the tree: a section of cards, or a card. */

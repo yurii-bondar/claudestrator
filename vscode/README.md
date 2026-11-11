@@ -2,9 +2,9 @@
 
 **A team of Claude Code agents in VS Code: a ticket in, reviewed draft PRs out, across several repos.**
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Installs](https://img.shields.io/visual-studio-marketplace/i/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Rating](https://img.shields.io/visual-studio-marketplace/r/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/yurii-bondar/vs-code-extensions/blob/main/claudestrator/LICENSE)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Installs](https://img.shields.io/visual-studio-marketplace/i/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![Rating](https://img.shields.io/visual-studio-marketplace/r/bondevn.claudestrator)](https://marketplace.visualstudio.com/items?itemName=bondevn.claudestrator) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/yurii-bondar/claudestrator/blob/main/LICENSE)
 
-![A task from plain words to draft PRs: the plan, your approval, developers per repo, two reviewers at once, a fix round, and the push you confirm](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/demo.gif)
+![A task from plain words to draft PRs: the plan, your approval, developers per repo, two reviewers at once, a fix round, and the push you confirm](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/demo.gif)
 
 You describe a task in plain words, or paste an issue: a Jira key or link, a GitHub or GitLab issue (`#12`, `owner/repo#12` or its link), a Linear issue link, or a Confluence page. A planner writes a plan for you to approve; a developer works in each repo, with its checks after it; a tester covers the change across the repos; reviewers check the whole diff with fresh eyes and send what they find back for a fix round. Everything is committed locally, and nothing is pushed until you say so: then the draft PRs open (on GitHub, Bitbucket Cloud, or as merge requests on GitLab).
 
@@ -50,55 +50,55 @@ Each agent is a `claude -p` session of your installed Claude Code CLI, under you
 
 **A task in plain words, with its group, instructions and the pipeline it will run**
 
-![A task in plain words, with its group, instructions and the pipeline it will run](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/01-new-task.png)
+![A task in plain words, with its group, instructions and the pipeline it will run](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/01-new-task.png)
 
 **The plan waits for your approval; nothing has changed in your repos yet**
 
-![The plan waits for your approval; nothing has changed in your repos yet](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/02-plan-approval.png)
+![The plan waits for your approval; nothing has changed in your repos yet](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/02-plan-approval.png)
 
 **Agents at work: developer per repo, then the tester across all of them**
 
-![Agents at work: developer per repo, then the tester across all of them](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/03-running.png)
+![Agents at work: developer per repo, then the tester across all of them](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/03-running.png)
 
 **Two reviewers at once: the reviewer and the appsec reviewer, each in its own session**
 
-![Two reviewers at once: the reviewer and the appsec reviewer, each in its own session](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/11-parallel-review.png)
+![Two reviewers at once: the reviewer and the appsec reviewer, each in its own session](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/11-parallel-review.png)
 
 **The reviewer found a blocker: a fix round**
 
-![The reviewer found a blocker: a fix round](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/04-fix-round.png)
+![The reviewer found a blocker: a fix round](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/04-fix-round.png)
 
 **Everything is committed locally; the push and the draft PRs wait for you**
 
-![Everything is committed locally; the push and the draft PRs wait for you](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/05-confirm-push.png)
+![Everything is committed locally; the push and the draft PRs wait for you](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/05-confirm-push.png)
 
 **The task's flow: the review loop, its round, and the reviewers that work in parallel**
 
-![The task's flow: the review loop, its round, and the reviewers that work in parallel](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/12-task-flow.png)
+![The task's flow: the review loop, its round, and the reviewers that work in parallel](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/12-task-flow.png)
 
 **Tasks grouped by what needs you**
 
-![Tasks grouped by what needs you](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/06-tasks.png)
+![Tasks grouped by what needs you](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/06-tasks.png)
 
 **Agents and the pipeline: models, effort, order**
 
-![Agents and the pipeline: models, effort, order](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/07-agents.png)
+![Agents and the pipeline: models, effort, order](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/07-agents.png)
 
 **Scenarios: Deliver, the built-in ones and your own**
 
-![Scenarios: Deliver, the built-in ones and your own](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/08-scenarios.png)
+![Scenarios: Deliver, the built-in ones and your own](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/08-scenarios.png)
 
 **Repos and the checks that run after each agent**
 
-![Repos and the checks that run after each agent](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/09-repos.png)
+![Repos and the checks that run after each agent](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/09-repos.png)
 
 **A group (epic, story) with its Jira key and the instructions it brings**
 
-![A group (epic, story) with its Jira key and the instructions it brings](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/10-groups.png)
+![A group (epic, story) with its Jira key and the instructions it brings](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/10-groups.png)
 
 **A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions**
 
-![A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions](https://raw.githubusercontent.com/yurii-bondar/vs-code-extensions/main/claudestrator/media/screenshots/13-scenario-diagram.png)
+![A scenario as a diagram: a Loop, a Parallel of reviewers, You approve, and one step's own instructions](https://raw.githubusercontent.com/yurii-bondar/claudestrator/main/vscode/media/screenshots/13-scenario-diagram.png)
 
 ## Using it
 
@@ -328,16 +328,20 @@ Then retry the step.
 
 ## Develop
 
+The source is [github.com/yurii-bondar/claudestrator](https://github.com/yurii-bondar/claudestrator): the engine and the dashboard page in `core/`, this extension in `vscode/`, the JetBrains plugin in `jetbrains/`.
+
 ```bash
-npm install
-npm test          # state machine, config, guard, intake, and the engine end to end against a fake Claude CLI and real git repos
-npm run preview   # the dashboard in a browser at http://127.0.0.1:4780, on the real engine with a fake agent
-npm run test:live # one small task on haiku against your installed Claude Code: guard, sandbox, commit (a few cents)
-npm run test:ui   # the dashboard in headless Chrome over the preview: issue sources in the composer, the tools, Bitbucket (CHROME=… if not found)
-npm run test:live:forges  # the real gh, glab, Bitbucket and Linear, each when its LIVE_* variables are set (see test/live/forges.ts); creates nothing
-npm run eval      # the agents' instructions against cases with a known answer (below)
+(cd core && npm install)    # the engine and the page; the extension compiles them into its own build
+(cd core && npm test)       # state machine, config, guard, intake, the page's screens, and the engine end to end against a fake Claude CLI and real git repos
+(cd core && npm run test:live)         # one small task on haiku against your installed Claude Code: guard, sandbox, commit (a few cents)
+(cd core && npm run test:live:forges)  # the real gh, glab, Bitbucket and Linear, each when its LIVE_* variables are set (see test/live/forges.ts); creates nothing
+(cd core && npm run eval)   # the agents' instructions against cases with a known answer (below)
+(cd vscode && npm install)
+(cd vscode && npm test)     # the extension's host: orchestrator, dashboard panel, contributed settings
+(cd vscode && npm run preview)  # the dashboard in a browser at http://127.0.0.1:4780, on the real engine with a fake agent
+(cd vscode && npm run test:ui)  # the dashboard in headless Chrome over the preview: issue sources in the composer, the tools, Bitbucket (CHROME=… if not found)
 ```
 
 `npm run eval` runs a few cases through the real engine and your installed Claude Code, each a small workspace with a known answer: the reviewer blocks a planted bug and lets a correct, tested change through; the planner names only the repo a ticket is about and plans a bug as a fix; the developer says it is blocked by a plan that names what the repo does not have, instead of making it up; the tester writes a failing test for a planted bug and leaves the code alone; the auditor rates a planted command injection critical or high; text planted for AI agents in a repo file or a Jira issue does not steer the developer; the verifier finds the acceptance criterion the code misses; review rounds converge (a round-one block is fixed and the next review approves); the planner follows a renamed API field to the repo that reads it, and to no other. Run it after changing an agent's instructions, model or effort. The agents run with their configured models (a dollar or so); `EVAL_MODEL=haiku EVAL_EFFORT=low` makes a run of a few cents, `EVAL_CASES=reviewer-blocks,planner-scope` picks cases, `EVAL_TRIALS=3` runs each case three times and prints the pass rate per case (an agent's answer varies between runs, so compare rates, not single runs), and a failed case keeps its workspace to look at. The cheap run checks the wiring and gross regressions; before a release run the configured models with `EVAL_TRIALS=3` or more. Each run is kept in `.eval/history.ndjson` (git-ignored), and prints each case's pass rate next to the last run on the same model and effort.
 
-Press F5 in VS Code to run the extension. To package, run `npx @vscode/vsce package` and install the `.vsix`.
+Press F5 in VS Code (with `vscode/` open) to run the extension. To package, run `npx @vscode/vsce package` in `vscode/` and install the `.vsix`.

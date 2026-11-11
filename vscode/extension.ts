@@ -3,9 +3,9 @@ import * as path from 'path';
 import { Orchestrator, settings } from './src/orchestrator';
 import { SectionColors, TaskTree, escapeMd } from './src/tree';
 import { DashboardPanel, deleteTask, openConfig } from './src/panel';
-import * as view from './src/core/view';
-import { commandTaskId } from './src/core/requests';
-import { CHECKPOINT_TITLE } from './src/core/describe';
+import * as view from '../core/src/view';
+import { commandTaskId } from '../core/src/requests';
+import { CHECKPOINT_TITLE } from '../core/src/describe';
 import type { Route } from './src/panel';
 import type { StoredLimits } from './src/orchestrator';
 

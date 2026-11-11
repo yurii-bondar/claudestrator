@@ -1,23 +1,23 @@
 # Claudestrator for JetBrains IDEs
 
-The [Claudestrator](../../claudestrator) extension for VS Code, as a plugin for WebStorm, IntelliJ IDEA, PyCharm, GoLand and the other IntelliJ-based IDEs. The dashboard, the task list, the status bar items and the notifications behave the same, because they are the same code.
+The [Claudestrator](../vscode) extension for VS Code, as a plugin for WebStorm, IntelliJ IDEA, PyCharm, GoLand and the other IntelliJ-based IDEs. The dashboard, the task list, the status bar items and the notifications behave the same, because they are the same code.
 
 ## How it works
 
-Nothing of the engine or the dashboard is rewritten. The plugin is a thin Kotlin shell around the VS Code extension's own code:
+Nothing of the engine or the dashboard is rewritten. The plugin is a thin Kotlin shell around the code the VS Code extension runs: the core (`core/`) and the extension's host code (`vscode/src`):
 
 ```
  IDE (Kotlin)                                   Node process ("engine", started by the plugin)
 ┌──────────────────────────────┐   stdio, JSON  ┌──────────────────────────────────────────┐
 │ tool window: task list       │ ◄────────────► │ sidecar/src/main.ts                       │
 │ editor tab: JCEF browser ────┼── page ◄─► ────┤   Orchestrator + DashboardPanel           │
-│   (claudestrator/media/*)    │                │   (claudestrator/src, unchanged)          │
+│   (core/page)                │                │   (vscode/src + core/src, unchanged)      │
 │ status bar, notifications,   │                │ sidecar/src/vscode-shim.ts                │
 │ settings, dialogs, terminals │ ◄── requests ──┤   stands in for the `vscode` module       │
 └──────────────────────────────┘                └──────────────────────────────────────────┘
 ```
 
-- **The page** (`claudestrator/media/*.ts`, built by the extension) is shown in the IDE's embedded browser. `acquireVsCodeApi()` and `--vscode-*` CSS variables are answered by the plugin (`PageHtml.kt`, `ThemeCss.kt`), so the page follows the IDE theme.
+- **The page** (`core/page/*.ts`, built into the engine folder by the sidecar's build) is shown in the IDE's embedded browser. `acquireVsCodeApi()` and `--vscode-*` CSS variables are answered by the plugin (`PageHtml.kt`, `ThemeCss.kt`), so the page follows the IDE theme.
 - **The engine** runs as a Node process. The build bundles it with esbuild, aliasing `vscode` to `sidecar/src/vscode-shim.ts`, which keeps settings and file watching itself and asks the IDE for everything an editor does (dialogs, opening files, terminals, secrets). The wire is one JSON object per line (`sidecar/src/protocol.ts` ↔ `engine/Protocol.kt`).
 - **What `extension.ts` does** in VS Code (task list, status bar, notifications, commands) is Kotlin here: `ui/`, `Notifier.kt`, `actions/`.
 
@@ -44,14 +44,15 @@ When the extension's engine or page changes, nothing here changes unless the wir
 ## Build and run
 
 ```bash
-(cd ../../claudestrator && npm ci)   # once: the engine's and the page's dependencies
+(cd ../core && npm ci)               # once: the engine's and the page's dependencies
+(cd ../vscode && npm ci)             # once: the vscode types the sidecar is checked against
 (cd sidecar && npm ci)               # once: esbuild
 ./gradlew runIde                     # an IDE with the plugin in a sandbox
 ./gradlew buildPlugin                # build/distributions/claudestrator-<version>.zip
 ./gradlew verifyPlugin               # Plugin Verifier against the IDEs in build.gradle.kts
 ```
 
-`buildPlugin` runs `npm run build` in `claudestrator/` and `sidecar/` itself. The zip holds `lib/` (the Kotlin jar) and `engine/` (the bundled engine and the page's files, which Node needs as real files).
+`buildPlugin` runs `npm run build` in `sidecar/` itself, which bundles the engine and builds the page. The zip holds `lib/` (the Kotlin jar) and `engine/` (the bundled engine and the page's files, which Node needs as real files).
 
 The JDK that runs Gradle is any 17+; the build downloads JDK 21 for compiling.
 

@@ -3,11 +3,11 @@
 import { exitCleanly, onBeforeExit, onMessage, send } from './transport';
 import * as shim from './vscode-shim';
 import type { Incoming } from './protocol';
-import { Orchestrator } from '../../../../claudestrator/src/orchestrator';
-import { DashboardPanel } from '../../../../claudestrator/src/panel';
-import * as view from '../../../../claudestrator/src/core/view';
-import { CHECKPOINT_TITLE } from '../../../../claudestrator/src/core/describe';
-import type { Route } from '../../../../claudestrator/src/core/wire';
+import { Orchestrator } from '../../../vscode/src/orchestrator';
+import { DashboardPanel } from '../../../vscode/src/panel';
+import * as view from '../../../core/src/view';
+import { CHECKPOINT_TITLE } from '../../../core/src/describe';
+import type { Route } from '../../../core/src/wire';
 
 // Recursive file watching, which the engine relies on, works on Linux only from Node 20.
 const MIN_NODE_MAJOR = 20;
