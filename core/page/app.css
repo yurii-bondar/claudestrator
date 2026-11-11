@@ -56,7 +56,7 @@
   --cs-brand-from: #e3896a;
   --cs-brand-to: #bd5b3a;
   --cs-brand-on: #faf9f5;
-  /* type: the host's family and base size, one ramp of six sizes and three weights */
+  /* type: the host's family and base size, one ramp of seven sizes and three weights */
   --cs-font-ui: var(--vscode-font-family);
   --cs-font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
   --cs-font-xs: 11px;
@@ -65,6 +65,7 @@
   --cs-font-lg: 15px;
   --cs-font-xl: 18px;
   --cs-font-2xl: 20px;
+  --cs-font-3xl: 24px;
   --cs-weight-regular: 400;
   --cs-weight-medium: 500;
   --cs-weight-strong: 600;
@@ -1306,3 +1307,51 @@ body.vscode-high-contrast .dg-loop, body.vscode-high-contrast .dg-parallel, body
   .dg-side { position: static; max-height: none; }
   .dg-canvas { height: 70vh; }
 }
+
+/* ---------- start: which Claude account the agents run under (the desktop app opens on it) ---------- */
+.shell.bare { grid-template-columns: minmax(0, 1fr); }
+.shell.bare .rail, .shell.bare .rail-scrim, .shell.bare .topbar { display: none; }
+.shell.bare main { padding: 0; }
+.start { position: relative; min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--cs-space-12) var(--cs-space-6); text-align: center; }
+.start-back { position: absolute; top: var(--cs-space-4); left: var(--cs-space-4); }
+.start .logo.start-logo { width: 56px; height: 56px; border-radius: var(--cs-radius-lg); }
+.start .logo.start-logo .logo-mark { width: 40px; height: 40px; }
+.start h1 { font-size: var(--cs-font-3xl); font-weight: var(--cs-weight-strong); margin: var(--cs-space-3) 0 0; }
+.start-sub { color: var(--cs-text-secondary); max-width: 600px; margin: var(--cs-space-3) 0 0; }
+.start-tiles { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: var(--cs-space-4); margin-top: 40px; }
+.start-foot { margin: var(--cs-space-8) 0 0; font-size: var(--cs-font-sm); color: var(--cs-text-secondary); }
+.acc-tile { box-sizing: border-box; width: 184px; min-height: 216px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--cs-space-6) var(--cs-space-4) var(--cs-space-5); background: var(--cs-bg-raised); color: var(--cs-text-primary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-lg); font: inherit; cursor: pointer; transition: background var(--cs-duration-fast), border-color var(--cs-duration-fast); }
+.acc-tile:hover { background: var(--cs-bg-hover); border-color: var(--cs-border-strong); }
+.acc-tile:focus-visible { outline: 2px solid var(--cs-border-focus); outline-offset: 2px; }
+.acc-tile.current { border-color: var(--cs-border-focus); box-shadow: 0 0 0 0.5px var(--cs-border-focus); }
+/* An account's tile holds its button (pick it) and, on hover or focus, its tools (alias, remove). */
+.acc-tile[data-key] { position: relative; padding: 0; cursor: default; }
+.acc-main { flex: 1; align-self: stretch; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--cs-space-6) var(--cs-space-4) var(--cs-space-5); background: none; border: 0; border-radius: inherit; color: inherit; font: inherit; cursor: pointer; }
+.acc-main:focus-visible { outline: 2px solid var(--cs-border-focus); outline-offset: 2px; }
+.acc-tile.editing .acc-main { cursor: default; }
+.acc-alias { width: 100%; text-align: center; }
+.acc-email { font-size: var(--cs-font-sm); color: var(--cs-text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--cs-duration-fast); }
+.acc-tile:hover .acc-tools, .acc-tile:focus-within .acc-tools { opacity: 1; }
+.acc-tools .icon-btn { width: 24px; height: 24px; }
+.acc-tools [data-action="start-remove"]:hover { color: var(--cs-status-err-text); }
+.acc-tile.dragging { opacity: 0.5; }
+.acc-tile.drop-target { border-style: dashed; border-color: var(--cs-border-focus); background: var(--cs-bg-hover); }
+.acc-tile.add { background: transparent; border: 1px dashed var(--cs-border-strong); }
+.acc-tile.add:hover { background: var(--cs-bg-hover); }
+.acc-tile.add.alone { min-height: 0; padding: 28px var(--cs-space-4); }
+.acc-tile.pending { cursor: default; border-color: var(--cs-border-focus); box-shadow: 0 0 0 0.5px var(--cs-border-focus); }
+.acc-avatar { width: 72px; height: 72px; flex: none; border-radius: var(--cs-radius-full); display: grid; place-items: center; margin-bottom: var(--cs-space-2); font-size: var(--cs-font-3xl); font-weight: var(--cs-weight-strong); color: var(--agent); background: color-mix(in srgb, var(--agent) 16%, transparent); }
+.acc-tile.add .acc-avatar { color: var(--cs-text-secondary); background: var(--cs-bg-hover); }
+.acc-tile.add:hover .acc-avatar { background: var(--cs-border-default); }
+.acc-tile.pending .acc-avatar { background: color-mix(in srgb, var(--cs-border-focus) 16%, transparent); }
+.acc-avatar .ic { width: 28px; height: 28px; }
+.acc-name { font-weight: var(--cs-weight-medium); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-meta { font-size: var(--cs-font-sm); color: var(--cs-text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-meta.wrap { white-space: normal; }
+.acc-state { margin-top: var(--cs-space-1); display: inline-flex; align-items: center; gap: 6px; padding: 2px var(--cs-space-2); border-radius: var(--cs-radius-full); font-size: var(--cs-font-xs); font-weight: var(--cs-weight-strong); }
+.acc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.acc-state.ok { color: var(--cs-status-ok-text); background: var(--cs-status-ok-tint); }
+.acc-state.warn { color: var(--cs-status-warn-text); background: var(--cs-status-warn-tint); }
+body.vscode-high-contrast .acc-state.ok { border: 1px solid var(--cs-status-ok-border); }
+body.vscode-high-contrast .acc-state.warn { border: 1px solid var(--cs-status-warn-border); }

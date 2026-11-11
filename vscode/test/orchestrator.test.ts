@@ -13,8 +13,11 @@ import type { PermissionRequest } from '../../core/src/wire';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const loader = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
 const load = loader._load;
+/** What orchestrator.ts gets as `vscode`: settings, read from `setting` (a test sets the ones it needs). */
+let setting: Record<string, unknown> = {};
+const vscodeStub = { workspace: { getConfiguration: () => ({ get: (key: string) => setting[key] }) } };
 loader._load = function (this: unknown, request: string, ...rest: unknown[]) {
-  return request === 'vscode' ? {} : load.call(this, request, ...rest);
+  return request === 'vscode' ? vscodeStub : load.call(this, request, ...rest);
 };
 const { Orchestrator } = require('../src/orchestrator') as typeof import('../src/orchestrator');
 loader._load = load;
@@ -84,4 +87,73 @@ test('orchestrator: an MCP check shows the configured servers once it starts, an
   assert.deepEqual(orch.mcp.servers.map((s) => s.name), ['Grafana', 'sentry']);
   assert.equal(orch.mcp.checking, true);
   assert.equal(checks, 1);
+});
+
+test('orchestrator: a new account gets the next free ~/.claude-<n>, is chosen and signed in to; a sign-in that does not finish puts the old one back', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-home-'));
+  fs.mkdirSync(path.join(home, '.claude-2')); // taken: the next one is -3
+  setting = { claudeConfigDir: '/accounts/before' };
+  const chosen: (string | null | undefined)[] = [];
+  let then: ((ok: boolean) => unknown) | undefined;
+  const orch = Object.assign(Object.create(Orchestrator.prototype) as InstanceType<typeof Orchestrator>, {
+    claudeLoginTerminal: null,
+    setAccount: async (dir?: string | null) => void chosen.push(dir),
+    claudeLogin: (fn?: (ok: boolean) => unknown) => void (then = fn),
+  });
+  try {
+    const dir = await orch.addAccount(home);
+    assert.equal(dir, path.join(home, '.claude-3'));
+    assert.ok(fs.statSync(dir).isDirectory());
+    assert.deepEqual(chosen, [dir]);
+    await then!(false);
+    assert.deepEqual(chosen, [dir, '/accounts/before'], 'the account it had before');
+    assert.equal(fs.existsSync(dir), false, 'the empty folder goes');
+
+    const kept = await orch.addAccount(home);
+    await then!(true);
+    assert.ok(fs.existsSync(kept), 'signed in: the account stays');
+    assert.equal(chosen.at(-1), kept);
+
+    Object.assign(orch, { claudeLoginTerminal: { exitStatus: undefined } });
+    await assert.rejects(orch.addAccount(home), /sign-in is open already/);
+  } finally {
+    setting = {};
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('orchestrator: removing an account signs out in each of its folders, leaves them off the list and moves the agents to another', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-rm-'));
+  // A `claude` that writes down where it signed out (its CLAUDE_CONFIG_DIR) and what it was asked.
+  const log = path.join(dir, 'log');
+  const claude = path.join(dir, 'claude');
+  fs.writeFileSync(claude, `#!/bin/sh\necho "\${CLAUDE_CONFIG_DIR:-default} $*" >> '${log}'\n`, { mode: 0o755 });
+  const state = new Map<string, unknown>();
+  const chosen: (string | null | undefined)[] = [];
+  const home = path.join(os.homedir(), '.claude');
+  const listed = [
+    { dir: home, label: 'claude', email: 'me@x.dev', current: false, loggedIn: true },
+    { dir: '/acc/.claude-work', label: 'work', email: 'me@x.dev', current: true, loggedIn: true },
+    { dir: '/acc/.claude-b', label: 'b', email: 'b@x.dev', current: false, loggedIn: true },
+  ];
+  const orch = Object.assign(Object.create(Orchestrator.prototype) as InstanceType<typeof Orchestrator>, {
+    context: { globalState: { get: (k: string) => state.get(k), update: async (k: string, v: unknown) => void state.set(k, v) } },
+    auth: new Map([[home, { loggedIn: true }]]),
+    accounts: async () => listed,
+    ensureReady: async () => undefined,
+    claudeCommand: () => claude,
+    accountChoice: () => ({ shownDir: '/acc/.claude-work' }),
+    setAccount: async (d?: string | null) => void chosen.push(d),
+    fire: () => {},
+  });
+  try {
+    await orch.removeAccount([home, '/acc/.claude-work', '/not/an/account']);
+    assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['default auth logout', '/acc/.claude-work auth logout'], 'the default folder signs out without CLAUDE_CONFIG_DIR');
+    assert.deepEqual(orch.removedAccounts(), [home, '/acc/.claude-work']);
+    assert.deepEqual(chosen, ['/acc/.claude-b'], 'the agents ran under it: they move to the account left');
+    assert.equal(orch.auth.has(home), false);
+    await assert.rejects(orch.removeAccount(['/not/an/account']), /No such Claude Code account/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

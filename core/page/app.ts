@@ -447,6 +447,8 @@ interface Views {
           </div>
         </div>`;
     }
+    // Start (choosing the account) is the whole window: no rail, no top bar.
+    $('.shell', app)!.classList.toggle('bare', S.route.name === 'start');
     renderNav();
   }
 
@@ -565,6 +567,7 @@ interface Views {
       <button class="acc-btn ${a.loggedIn === false ? 'signed-out' : ''}" data-action="eff-menu" title="${esc(`${a.loggedIn === false ? 'Signed out — ' : ''}Claude account for agents, MCP and limits: ${who} (${a.shownDir}) — ${a.sourceText}`)}">${icon('user')}<span>${esc(who)}</span>${toolsOk ? `<i class="acc-ok" title="All tools ready">${icon('check')}</i>` : ''}▾</button>
       <div class="menu acc-menu">
         <div class="menu-title">Claude account for agents, MCP servers and limits</div>
+        ${window.__csHost === 'desktop' ? `<button data-action="nav" data-name="start">${icon('users')}<span class="acc-row"><b>All accounts…</b><span class="muted small">the start screen: pick, add, name or remove one</span></span></button>` : ''}
         ${rows}
         ${a.source === 'setting' ? `<button data-action="set-account" data-dir="">${icon('refresh')}<span class="acc-row"><b>Automatic</b><span class="muted small">follow ctx-man / VS Code, else ~/.claude</span></span></button>` : `<div class="menu-note muted small">${icon('info')}Now: ${esc(a.sourceText)}</div>`}
       </div>
@@ -2229,7 +2232,7 @@ interface Views {
   // Live durations ("2m 13s") tick without re-rendering anything else.
   setInterval(() => tick(), 1000);
 
-  window.CS = { vscode, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
+  window.CS = { vscode, LOGO, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
     // Called by the last script to load (config.js) once every view is registered.
     boot: async () => {
       renderShell();

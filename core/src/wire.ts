@@ -113,6 +113,8 @@ export interface AccountEntry {
   email?: string;
   current: boolean;
   loggedIn?: boolean;
+  /** Its subscription (`max`, `team`, …), once `claude auth status` said. */
+  plan?: string;
 }
 
 /** One window of the account's limits. */
@@ -860,9 +862,22 @@ export interface Rpc {
   overview: { params: void; result: Overview };
   health: { params: { refresh?: boolean }; result: HealthSummary };
   detect: { params: void; result: DetectData };
-  accounts: { params: void; result: { current: Account; accounts: AccountEntry[] } };
+  /**
+   * `signingIn`: a Claude sign-in runs in a terminal now. The start screen's tiles are keyed by an account's email,
+   * lowercase, or `dir:<folder>`: `order` has the keys in the order you put them (the rest follow), `aliases` the
+   * short names you gave them.
+   */
+  accounts: { params: void; result: { current: Account; accounts: AccountEntry[]; signingIn: boolean; order: string[]; aliases: Record<string, string> } };
+  setAccountOrder: { params: { order: string[] }; result: Void };
+  /** An empty alias takes it off. */
+  setAccountAlias: { params: { key: string; alias: string }; result: Void };
+  /** Signs out of an account in each of its folders and leaves it off the lists, after you confirm; the folders stay. */
+  removeAccount: { params: { dirs: string[] }; result: { removed: boolean } };
   setAccount: { params: { dir?: string | null }; result: Account };
   claudeLogin: { params: void; result: Void };
+  /** A new account: a folder of its own, chosen, and signed in to in a terminal. */
+  addAccount: { params: void; result: Void };
+  cancelClaudeLogin: { params: void; result: Void };
   config: { params: void; result: ConfigData };
   updateAgent: { params: { name: string; patch: Record<string, unknown> }; result: Void };
   resetAgent: { params: { name: string }; result: Void };

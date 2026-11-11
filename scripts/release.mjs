@@ -59,7 +59,7 @@ const extension = (dir, name, label, ships = []) => ({
 });
 
 const TARGETS = {
-  vsix: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'config.js', 'markdown.js', 'stream.js', 'app.css', 'tab-icon-orchestra.svg'].map((f) => `extension/dist/page/${f}`)),
+  vsix: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'start.js', 'config.js', 'markdown.js', 'stream.js', 'app.css', 'tab-icon-orchestra.svg'].map((f) => `extension/dist/page/${f}`)),
   jetbrains: {
     kind: 'jetbrains',
     label: 'Claudestrator (JetBrains)',

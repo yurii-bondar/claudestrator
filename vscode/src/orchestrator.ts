@@ -1,6 +1,7 @@
 // The extension's service: one engine per workspace root, the environment it runs in, and change events
 // for the tree, the status bar and the dashboard.
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import { Engine } from '../../core/src/engine';
 import { exists } from '../../core/src/files';
@@ -25,6 +26,8 @@ import type { Account, AccountEntry, EngineEvent, LimitWindow, StoredLimits, Per
 type AccountChoice = Pick<Account, 'dir' | 'shownDir' | 'label' | 'source' | 'sourceText'>;
 
 const SECRET_KEY = 'claudestrator.atlassianToken';
+/** The accounts' folders you removed (signed out of): left off the lists, though they stay on disk (globalState). */
+const HIDDEN_ACCOUNTS = 'claudestrator.hiddenAccounts';
 const BITBUCKET_SECRET_KEY = 'claudestrator.bitbucketToken';
 
 /** What the machine check found. After a failed probe only `error` and a failed `claude` are known. */
@@ -390,12 +393,13 @@ class Orchestrator {
   /** Every Claude Code account on this machine, without the ones hidden in ctx-man. */
   async accounts(): Promise<AccountEntry[]> {
     const hidden = vscode.workspace.getConfiguration('ctxMan').get<string[]>('hiddenAccounts') || [];
+    const removed = this.removedAccounts();
     const current = this.accountChoice().shownDir;
     return (await claudeAccounts())
-      .filter((a) => a.dir === current || !hidden.some((h) => h === a.label || path.resolve(expand(h)) === a.dir))
+      .filter((a) => a.dir === current || (!removed.includes(a.dir) && !hidden.some((h) => h === a.label || path.resolve(expand(h)) === a.dir)))
       .map((a) => {
         const auth = this.auth.get(a.dir);
-        return { ...a, current: a.dir === current, ...(auth && { loggedIn: auth.loggedIn, ...(auth.email && { email: auth.email }) }) };
+        return { ...a, current: a.dir === current, ...(auth && { loggedIn: auth.loggedIn, ...(auth.email && { email: auth.email }), ...(auth.plan && { plan: auth.plan }) }) };
       });
   }
 
@@ -425,8 +429,11 @@ class Orchestrator {
     this.fire();
   }
 
-  /** `claude auth login` for the agents' account, in a terminal (it opens the browser and may ask for a code). */
-  claudeLogin(): void {
+  /**
+   * `claude auth login` for the agents' account, in a terminal (it opens the browser and may ask for a code).
+   * `then` hears whether it ended signed in.
+   */
+  claudeLogin(then?: (ok: boolean) => unknown): void {
     if (this.claudeLoginTerminal && !this.claudeLoginTerminal.exitStatus) return this.claudeLoginTerminal.show();
     const { dir, label } = this.accountChoice();
     const terminal = vscode.window.createTerminal({ name: `Claude sign-in · ${label}`, shellPath: this.claudeCommand(), shellArgs: ['auth', 'login'], cwd: os.homedir(), env: { PATH: getChildEnv().PATH, CLAUDE_CONFIG_DIR: dir || null }, iconPath: new vscode.ThemeIcon('account') });
@@ -443,10 +450,79 @@ class Orchestrator {
         const ok = account.loggedIn === true;
         this._onEngine.fire({ name: 'mcpLogin', data: { ok, kind: ok ? 'ok' : 'info', message: ok ? `Signed in to Claude as ${account.email || account.label}` : 'The Claude sign-in did not finish' } });
         if (ok) this.onAccountChanged();
+        if (then) await then(ok);
       });
     };
     const poll = setInterval(() => terminal.exitStatus && done(), 1000);
     sub = vscode.window.onDidCloseTerminal((t) => t === terminal && done());
+  }
+
+  /** The folders of accounts removed here. */
+  removedAccounts(): string[] {
+    const stored: unknown = this.context.globalState.get(HIDDEN_ACCOUNTS);
+    return Array.isArray(stored) ? stored.filter((d): d is string => typeof d === 'string') : [];
+  }
+
+  /**
+   * Signs out of an account in each of its folders (`claude auth logout`) and leaves those folders off the lists; they
+   * stay on disk, with their sessions and settings. Agents that ran under it move to another signed-in account.
+   */
+  async removeAccount(dirs: string[]): Promise<void> {
+    const listed = await this.accounts();
+    const gone = dirs.filter((d) => listed.some((a) => a.dir === d));
+    if (!gone.length) throw new Error('No such Claude Code account here');
+    await this.ensureReady();
+    const home = path.join(os.homedir(), '.claude');
+    const base = { ...getChildEnv() };
+    delete base.ELECTRON_RUN_AS_NODE;
+    for (const dir of gone) {
+      const env: NodeJS.ProcessEnv = { ...base };
+      // The default account is the one without CLAUDE_CONFIG_DIR, as in refreshAuth.
+      if (dir === home) delete env.CLAUDE_CONFIG_DIR;
+      else env.CLAUDE_CONFIG_DIR = dir;
+      const r = await exec(this.claudeCommand(), ['auth', 'logout'], { cwd: os.homedir(), env, timeoutMs: 20000 });
+      if (r.code !== 0) throw new Error(`Could not sign out in ${dir}: ${(r.stderr || r.stdout).trim() || `exit ${r.code}`}`);
+      this.auth.delete(dir);
+    }
+    await this.context.globalState.update(HIDDEN_ACCOUNTS, [...new Set([...this.removedAccounts(), ...gone])]);
+    if (gone.includes(this.accountChoice().shownDir)) {
+      const next = listed.find((a) => !gone.includes(a.dir) && a.loggedIn);
+      await this.setAccount(next ? next.dir : '');
+    }
+    this.fire();
+  }
+
+  /** Whether a Claude sign-in runs in a terminal now. */
+  get signingIn(): boolean {
+    return Boolean(this.claudeLoginTerminal && !this.claudeLoginTerminal.exitStatus);
+  }
+
+  /** Ends the sign-in running now: its terminal closes, and the account is checked again. */
+  cancelClaudeLogin(): void {
+    this.claudeLoginTerminal?.dispose();
+  }
+
+  /**
+   * A new account: the next free `~/.claude-<n>` (Claude Code's config folder for it), made the agents' account and
+   * signed in to. A sign-in that does not finish puts the account back as it was, and the folder, still empty, goes.
+   */
+  async addAccount(home: string = os.homedir()): Promise<string> {
+    if (this.signingIn) throw new Error('A Claude sign-in is open already: finish it, or cancel it first');
+    const taken = new Set((await claudeAccounts()).map((a) => a.dir));
+    let dir = '';
+    for (let n = 2; !dir; n++) {
+      const candidate = path.join(home, `.claude-${n}`);
+      if (!taken.has(candidate) && !(await exists(candidate))) dir = candidate;
+    }
+    const before = settings().get<string>('claudeConfigDir') || '';
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+    await this.setAccount(dir);
+    this.claudeLogin(async (ok) => {
+      if (ok) return;
+      await this.setAccount(before);
+      await fs.promises.rmdir(dir).catch(() => undefined); // not empty: the sign-in wrote something, which stays
+    });
+    return dir;
   }
 
   /** The configuration listener above picks the change up. */
