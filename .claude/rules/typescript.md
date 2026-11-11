@@ -6,7 +6,7 @@ paths:
 
 # TypeScript
 
-Always-on for every `.ts` in `core/`, `vscode/` and `jetbrains/sidecar/`, not just in hot-path code. Performance-specific rules live in the `ts-performance` skill.
+Always-on for every `.ts` in `core/`, `vscode/`, `jetbrains/sidecar/` and `desktop/`, not just in hot-path code. Performance-specific rules live in the `ts-performance` skill.
 
 ## Safety
 
