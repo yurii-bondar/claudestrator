@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- As the JetBrains plugin's page (PageHtml.kt): only these files run; the socket is Electrobun's RPC to the app. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' views:; style-src 'self' views: 'unsafe-inline'; img-src 'self' views: data: https:; font-src 'self' views: data:; connect-src ws://127.0.0.1:*">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claudestrator</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="page/app.css">
+</head>
+<body>
+<!-- The bridge first: the theme is set before anything paints, acquireVsCodeApi before the page asks for it. -->
+<script src="index.js"></script>
+<div id="app"><div class="boot"><div class="spinner"></div></div></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="modal-root"></div>
+<!-- The VS Code page's PAGE_SCRIPTS (vscode/src/panel.ts), in its order: the release script checks the hosts agree. -->
+<script src="page/markdown.js"></script>
+<script src="page/stream.js"></script>
+<script src="page/app.js"></script>
+<script src="page/task.js"></script>
+<script src="page/diagram-model.js"></script>
+<script src="page/diagram-canvas.js"></script>
+<script src="page/diagram-side.js"></script>
+<script src="page/diagram.js"></script>
+<script src="page/start.js"></script>
+<script src="page/config.js"></script>
+</body>
+</html>

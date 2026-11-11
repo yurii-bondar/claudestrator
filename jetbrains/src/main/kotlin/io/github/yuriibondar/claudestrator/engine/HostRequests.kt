@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * What the engine asks of an editor: show a message, open a file, pick a folder, keep a secret, run a terminal.
- * The sidecar's `vscode` stand-in (sidecar/src/vscode-shim.ts) makes the requests; each gets exactly one answer.
+ * The sidecar's `vscode` stand-in (core/src/vscode-shim.ts) makes the requests; each gets exactly one answer.
  */
 internal class HostRequests(private val project: Project, private val engine: EngineService) {
     private val processes = ConcurrentHashMap<Int, ProcessHandler>()

@@ -45,7 +45,10 @@ const OUTPUT_MS = 50;
  * transcript of stream.js, diagram.js the draft, canvas and right column of the three diagram-*.js before it). The JetBrains plugin builds its page from the same files (PageHtml.kt, `SCRIPTS`), and the
  * release script checks that it lists these, in this order.
  */
-const PAGE_SCRIPTS = ['markdown.js', 'stream.js', 'app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'config.js'];
+const PAGE_SCRIPTS = ['markdown.js', 'stream.js', 'app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'start.js', 'config.js'];
+/** Where the order of the start screen's account tiles, and their short names, are kept (globalState). */
+const ACCOUNT_ORDER = 'claudestrator.accountOrder';
+const ACCOUNT_ALIASES = 'claudestrator.accountAliases';
 const LANGUAGES = ['English', 'Ukrainian', 'German', 'French', 'Spanish', 'Polish', 'Portuguese', 'Italian', 'Japanese', 'Chinese'];
 
 class DashboardPanel implements RpcHandlers {
@@ -307,6 +310,7 @@ class DashboardPanel implements RpcHandlers {
       limits: await this.orch.limits(),
       account: await this.orch.account(),
       accounts: await this.orch.accounts(),
+      accountAliases: this.accountAliases(),
       mcp: (() => {
         const list = this.orch.mcp.servers;
         const n = (st: string): number => list.filter((s) => s.state === st).length;
@@ -542,11 +546,50 @@ class DashboardPanel implements RpcHandlers {
   // ---------- MCP ----------
 
   async $accounts() {
-    return { current: await this.orch.account(), accounts: await this.orch.accounts() };
+    const stored: unknown = this.context.globalState.get(ACCOUNT_ORDER);
+    const order = Array.isArray(stored) ? stored.filter((k): k is string => typeof k === 'string') : [];
+    return { current: await this.orch.account(), accounts: await this.orch.accounts(), signingIn: this.orch.signingIn, order, aliases: this.accountAliases() };
+  }
+
+  /** The short names given to the start screen's tiles, by their key. */
+  accountAliases(): Record<string, string> {
+    const stored: unknown = this.context.globalState.get(ACCOUNT_ALIASES);
+    if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+    return Object.fromEntries(Object.entries(stored).filter((e): e is [string, string] => typeof e[1] === 'string'));
+  }
+
+  async $setAccountAlias({ key, alias }: { key: string; alias: string }) {
+    const { [key]: _old, ...rest } = this.accountAliases();
+    const name = alias.trim();
+    await this.context.globalState.update(ACCOUNT_ALIASES, name ? { ...rest, [key]: name } : rest);
+  }
+
+  async $removeAccount({ dirs }: { dirs: string[] }) {
+    const accounts = (await this.orch.accounts()).filter((a) => dirs.includes(a.dir));
+    if (!accounts.length) throw new Error('No such Claude Code account here');
+    const name = accounts.find((a) => a.email)?.email ?? accounts[0]!.label;
+    const folders = accounts.map((a) => a.dir.replace(os.homedir(), '~')).join(', ');
+    const ok = await vscode.window.showWarningMessage(`Sign out of ${name} and remove it?`, { modal: true, detail: `Claude Code signs out in ${folders}: that covers your own claude in a terminal there too. The folders stay on disk, with their sessions and settings. To use the account again, add it with +.` }, 'Sign Out and Remove');
+    if (ok !== 'Sign Out and Remove') return { removed: false };
+    await this.orch.removeAccount(accounts.map((a) => a.dir));
+    return { removed: true };
+  }
+
+  /** The start screen's tiles, as you arranged them: this machine's, kept with the extension's other state. */
+  async $setAccountOrder({ order }: { order: string[] }) {
+    await this.context.globalState.update(ACCOUNT_ORDER, order);
   }
 
   async $claudeLogin() {
     this.orch.claudeLogin();
+  }
+
+  async $addAccount() {
+    await this.orch.addAccount();
+  }
+
+  async $cancelClaudeLogin() {
+    this.orch.cancelClaudeLogin();
   }
 
   async $setAccount({ dir }: { dir?: string | null }) {

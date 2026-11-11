@@ -85,7 +85,7 @@ function openSession({ id, dir, resume = false, newWindow = false }: OpenSession
 - Every piece of logic exists in one place. Duplication is a source of bugs.
 - But: do not abstract prematurely. Three similar lines do not always require a function — wait for the fourth.
 - DRY applies to *knowledge and logic*, not syntax. Similar-looking code may express different things.
-- Across hosts: what more than one host needs (VS Code, JetBrains, a future desktop app) belongs in `core/`, not copied into each host. Host folders hold only what talks to their editor.
+- Across hosts: what more than one host needs (VS Code, JetBrains, the desktop app) belongs in `core/`, not copied into each host. Host folders hold only what talks to their editor.
 
 ---
 

@@ -1,5 +1,5 @@
 // What the dashboard scripts share. They are plain scripts loaded one after the other (markdown.js, stream.js, app.js,
-// task.js, diagram-model.js, diagram-canvas.js, diagram-side.js, diagram.js, config.js), not modules: markdown.js and
+// task.js, diagram-model.js, diagram-canvas.js, diagram-side.js, diagram.js, start.js, config.js), not modules: markdown.js and
 // stream.js set functions on `window`, app.js publishes the shell API on `window.CS`, the diagram-*.js scripts each a
 // `const` the next ones read (dgModel, dgCanvas, dgSide), and the views register themselves there. The page is built from HTML strings and DOM events.
 // What the host sends comes through the types of src/wire.ts.
@@ -236,6 +236,10 @@ interface ToastAction {
 
 interface CSApi {
   vscode: ReturnType<typeof acquireVsCodeApi>;
+  /** The brand mark (an inline SVG), as the rail shows it. */
+  LOGO: string;
+  /** An account's key, as the start screen's tiles and the aliases know it: its email, lowercase, or `dir:<folder>`. */
+  accountKey(a: { email?: string | undefined; dir: string }): string;
   call<M extends keyof Rpc>(method: M, ...params: RpcArgs<Rpc[M]['params']>): Promise<Rpc[M]['result']>;
   attempt<M extends keyof Rpc>(method: M, params?: Rpc[M]['params'], okText?: string | null): Promise<Attempted<Rpc[M]['result']>>;
   toast(text: string, kind?: string, action?: ToastAction): void;
@@ -308,6 +312,8 @@ interface LoadedEdge {
 }
 
 interface Window {
+  /** Set by the desktop app's page before these scripts run; VS Code and JetBrains leave it out. */
+  __csHost?: 'desktop';
   escapeHtml: (s: unknown) => string;
   renderMarkdown: (text: string) => string;
   stripJsonBlock: (text: string) => string;

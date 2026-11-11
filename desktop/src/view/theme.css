@@ -1,0 +1,139 @@
+/* The Claudestrator palette (the Penpot design file's Theme/* tokens, as vscode/scripts/design-sync/themes.mjs gives
+   them) under the names of VS Code's theme variables, which the page's --cs-* tokens are made from (core/page/app.css).
+   In an editor the editor's theme fills them; here the system's appearance picks one of four (src/view/index.ts sets
+   <html data-theme>). The hues stay the dark ones: the page darkens them itself for light themes. */
+:root {
+  --vscode-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --vscode-charts-blue: #7fb2ff;
+  --vscode-testing-iconPassed: #6fcf8e;
+  --vscode-editorWarning-foreground: #e6b84f;
+  --vscode-errorForeground: #f58378;
+  --vscode-charts-red: #f58378;
+  --vscode-charts-green: #6fcf8e;
+  --vscode-charts-yellow: #e6b84f;
+  --vscode-charts-purple: #c49bf0;
+  --vscode-charts-orange: #ec9574;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --vscode-foreground: #edece7;
+  --vscode-descriptionForeground: #a8a69e;
+  --vscode-editor-background: #131312;
+  --vscode-sideBar-background: #1b1b19;
+  --vscode-editorWidget-background: #232321;
+  --vscode-panel-border: #34332f;
+  --vscode-list-hoverBackground: #2a2a27;
+  --vscode-focusBorder: #ec9574;
+  --vscode-textLink-foreground: #ec9574;
+  --vscode-button-background: #b0522f;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #a24826;
+  --vscode-button-secondaryBackground: #2a2a27;
+  --vscode-button-secondaryForeground: #edece7;
+  --vscode-button-secondaryHoverBackground: #34332f;
+  --vscode-input-background: #131312;
+  --vscode-input-foreground: #edece7;
+  --vscode-input-border: #34332f;
+  --vscode-textCodeBlock-background: #232321;
+  --vscode-menu-background: #232321;
+  --vscode-notifications-background: #232321;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --vscode-foreground: #1b1b19;
+  --vscode-descriptionForeground: #57554e;
+  --vscode-editor-background: #f6f5f1;
+  --vscode-sideBar-background: #ffffff;
+  --vscode-editorWidget-background: #fbfaf7;
+  --vscode-panel-border: #e2e0d9;
+  --vscode-list-hoverBackground: #edece7;
+  --vscode-focusBorder: #b0522f;
+  --vscode-textLink-foreground: #a24826;
+  --vscode-button-background: #b0522f;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #a24826;
+  --vscode-button-secondaryBackground: #edece7;
+  --vscode-button-secondaryForeground: #1b1b19;
+  --vscode-button-secondaryHoverBackground: #e2e0d9;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #1b1b19;
+  --vscode-input-border: #e2e0d9;
+  --vscode-textCodeBlock-background: #fbfaf7;
+  --vscode-menu-background: #fbfaf7;
+  --vscode-notifications-background: #fbfaf7;
+}
+
+:root[data-theme="hc-dark"] {
+  color-scheme: dark;
+  --vscode-foreground: #ffffff;
+  --vscode-descriptionForeground: #ffffff;
+  --vscode-editor-background: #000000;
+  --vscode-sideBar-background: #000000;
+  --vscode-editorWidget-background: #000000;
+  --vscode-panel-border: #6fc3df;
+  --vscode-contrastBorder: #6fc3df;
+  --vscode-list-hoverBackground: rgba(255, 255, 255, 0.08);
+  --vscode-focusBorder: #f38518;
+  --vscode-textLink-foreground: #6fc3df;
+  --vscode-button-background: #6fc3df;
+  --vscode-button-foreground: #000000;
+  --vscode-button-hoverBackground: #ffd370;
+  --vscode-button-border: #6fc3df;
+  --vscode-button-secondaryBackground: #000000;
+  --vscode-button-secondaryForeground: #ffffff;
+  --vscode-button-secondaryHoverBackground: #000000;
+  --vscode-input-background: #000000;
+  --vscode-input-foreground: #ffffff;
+  --vscode-input-border: #6fc3df;
+  --vscode-textCodeBlock-background: #000000;
+  --vscode-menu-background: #000000;
+  --vscode-notifications-background: #000000;
+}
+
+:root[data-theme="hc-light"] {
+  color-scheme: light;
+  --vscode-foreground: #000000;
+  --vscode-descriptionForeground: #000000;
+  --vscode-editor-background: #ffffff;
+  --vscode-sideBar-background: #ffffff;
+  --vscode-editorWidget-background: #ffffff;
+  --vscode-panel-border: #0f4a85;
+  --vscode-contrastBorder: #0f4a85;
+  --vscode-list-hoverBackground: rgba(0, 0, 0, 0.06);
+  --vscode-focusBorder: #006bbd;
+  --vscode-textLink-foreground: #0f4a85;
+  --vscode-button-background: #0f4a85;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #000000;
+  --vscode-button-border: #0f4a85;
+  --vscode-button-secondaryBackground: #ffffff;
+  --vscode-button-secondaryForeground: #000000;
+  --vscode-button-secondaryHoverBackground: #ffffff;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #000000;
+  --vscode-input-border: #0f4a85;
+  --vscode-textCodeBlock-background: #ffffff;
+  --vscode-menu-background: #ffffff;
+  --vscode-notifications-background: #ffffff;
+}
+
+/* The window's own ground while the page loads: no white flash in dark mode. */
+html {
+  background: var(--vscode-editor-background, #f6f5f1);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) {
+    background: #131312;
+  }
+}
+
+/* Electrobun's preload turns the bounce at the page's edges off (overscroll-behavior: none on html and body). The page
+   keeps the system's behaviour instead: two-finger scrolling on a trackpad was checked with it. Nothing here sets
+   overflow on html or body: with overflow-x on <html>, trackpad scrolling stopped. */
+html, body {
+  overscroll-behavior: auto !important;
+}

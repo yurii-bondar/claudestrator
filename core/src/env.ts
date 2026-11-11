@@ -18,15 +18,24 @@ function run(cmd: string, args: string[], timeout = 8000, env?: NodeJS.ProcessEn
   });
 }
 
-/** PATH as the user's login shell sets it, merged with what VS Code already has. */
+/**
+ * PATH as the user's shell sets it for a terminal, merged with what the host already has. Interactive and login, as
+ * VS Code reads it: what ~/.zshrc or ~/.bashrc adds (nvm's node, which git hooks run npm with) is there too, where an
+ * app started from the Dock (the desktop app, a JetBrains IDE) has only the system's PATH. A shell that does not
+ * answer that way (a ~/.zshrc that waits for input, or fails) is asked again as a login shell only.
+ */
 async function loginShellPath(): Promise<string> {
   if (isWin) return process.env.PATH || '';
   const shell = process.env.SHELL || ((await exists('/bin/zsh')) ? '/bin/zsh' : '/bin/bash');
   const marker = '__CLAUDESTRATOR_PATH__';
-  const r = await run(shell, ['-lc', `printf '${marker}%s${marker}' "$PATH"`], 8000);
-  const m = r.stdout.match(new RegExp(`${marker}(.*)${marker}`));
+  const ask = async (flags: string, timeout: number): Promise<string[] | null> => {
+    const r = await run(shell, [flags, `printf '${marker}%s${marker}' "$PATH"`], timeout);
+    const m = r.stdout.match(new RegExp(`${marker}(.*)${marker}`));
+    return m ? m[1]!.split(':') : null;
+  };
+  const shellPath = (await ask('-ilc', 8000)) ?? (await ask('-lc', 8000)) ?? [];
   const extra = [path.join(HOME, '.local', 'bin'), path.join(HOME, '.claude', 'local'), '/opt/homebrew/bin', '/usr/local/bin'];
-  const parts = [...(m ? m[1]!.split(':') : []), ...(process.env.PATH || '').split(':'), ...extra].filter(Boolean);
+  const parts = [...shellPath, ...(process.env.PATH || '').split(':'), ...extra].filter(Boolean);
   return [...new Set(parts)].join(':');
 }
 

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// Builds Claudestrator for release: the VS Code extension (.vsix) and the JetBrains plugin (.zip), each versioned as
+// Builds Claudestrator for release: the VS Code extension (.vsix), the JetBrains plugin (.zip) and the desktop app
+// (.dmg and the update archive, in desktop/artifacts), each versioned as
 // semantic-release versions it in CI (release.config.base.cjs), while releases are made by hand:
 //
 // - The last release of each is its git tag: `claudestrator-v<version>` for the extension (semantic-release-monorepo's
-//   name, from its package name) and `jetbrains-claudestrator-v<version>` for the plugin. A target with no tag yet is
+//   name, from its package name), `jetbrains-claudestrator-v<version>` for the plugin and `desktop-claudestrator-v<version>`
+//   for the desktop app. A target with no tag yet is
 //   skipped: tag the commit its published version was built from once.
 // - The commits since then that touch its folders decide the next version, read by semantic-release's own commit
 //   analyzer with the conventionalcommits preset: `feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE` → major,
 //   `refactor`/`test`/`docs`/`chore`/`ci`/`build`/`style` → no release. The JetBrains plugin bundles the extension's
-//   engine and page, so the extension's commits count for it too.
+//   engine and page, so the extension's commits count for it too; the desktop app runs the same host code.
 // - Nothing is built when a target's folders hold exactly what its last release held (their git tree hashes match),
 //   or when no commit since then calls for a release. Hashes, not commit lists, so a squash merge or a rebase that
 //   brings the same content is no new release.
@@ -21,8 +23,8 @@
 //   test       typecheck, lint and every test first (core, the extension, and the sidecar and plugin if due), then build
 //   live       the tests, then two real Claudestrator tasks on haiku at low effort (npm run test:live: a delivery and a
 //              scenario with Parallel, You approve and Branch; a few cents), then build
-//   <target>   vsix (the VS Code extension), jetbrains (the plugin), desktop (the desktop app, not in the repo yet),
-//              or all; several may be named. None: all of them.
+//   <target>   vsix (the VS Code extension), jetbrains (the plugin), desktop (the desktop app: needs hutch, see
+//              desktop/README.md), or all; several may be named. None: all of them.
 //   --dry-run  build and verify, then put the version files back: no commit, no tag
 //   --force    build a target with nothing due at its last released version (no commit, no tag)
 import { spawnSync } from 'node:child_process';
@@ -38,6 +40,7 @@ const CORE = path.join(ROOT, 'core');
 const EXTENSION = path.join(ROOT, 'vscode');
 const PLUGIN = path.join(ROOT, 'jetbrains');
 const SIDECAR = path.join(PLUGIN, 'sidecar');
+const DESKTOP = path.join(ROOT, 'desktop');
 const WIN = process.platform === 'win32';
 /** The rules of release.config.base.cjs: the same preset for the version and for the notes. */
 const PRESET = { preset: 'conventionalcommits' };
@@ -59,7 +62,7 @@ const extension = (dir, name, label, ships = []) => ({
 });
 
 const TARGETS = {
-  vsix: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'config.js', 'markdown.js', 'stream.js', 'app.css', 'tab-icon-orchestra.svg'].map((f) => `extension/dist/page/${f}`)),
+  vsix: extension('vscode', 'claudestrator', 'Claudestrator (VS Code)', ['app.js', 'task.js', 'diagram-model.js', 'diagram-canvas.js', 'diagram-side.js', 'diagram.js', 'start.js', 'config.js', 'markdown.js', 'stream.js', 'app.css', 'tab-icon-orchestra.svg'].map((f) => `extension/dist/page/${f}`)),
   jetbrains: {
     kind: 'jetbrains',
     label: 'Claudestrator (JetBrains)',
@@ -67,6 +70,15 @@ const TARGETS = {
     paths: ['jetbrains', 'vscode', 'core'],
     versionFiles: ['jetbrains/gradle.properties'],
     changelog: 'jetbrains/CHANGELOG.md',
+  },
+  desktop: {
+    kind: 'desktop',
+    label: 'Claudestrator (desktop)',
+    tagPrefix: 'desktop-claudestrator-v',
+    // The engine thread is vscode/src's host code on the core, as the plugin's sidecar is.
+    paths: ['desktop', 'vscode', 'core'],
+    versionFiles: ['desktop/package.json'],
+    changelog: 'desktop/CHANGELOG.md',
   },
 };
 
@@ -78,7 +90,6 @@ function parseArgs(argv) {
     if (['build', 'test', 'live'].includes(a)) opts.mode = a;
     else if (a === 'all') opts.targets.push(...Object.keys(TARGETS));
     else if (TARGETS[a]) opts.targets.push(a);
-    else if (a === 'desktop') throw new Error('desktop: the desktop app is not in this repo yet; its target comes with it');
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--force') opts.force = true;
     else if (a === '-h' || a === '--help') {
@@ -116,6 +127,7 @@ function step(title, cmd, args, { cwd = ROOT, env = {} } = {}) {
 }
 
 const npm = WIN ? 'npm.cmd' : 'npm';
+const hutch = WIN ? 'hutch.exe' : 'hutch';
 const gradlew = WIN ? 'gradlew.bat' : './gradlew';
 
 // ---------- versions ----------
@@ -239,6 +251,10 @@ function writeVersion(target, version) {
   if (target.kind === 'vscode') {
     // package.json and package-lock.json together, as semantic-release-vsce does (npm version, no git).
     out(npm, ['version', version, '--no-git-tag-version', '--allow-same-version'], { cwd: path.join(ROOT, target.dir) });
+  } else if (target.kind === 'desktop') {
+    // electrobun.config.ts takes the app's version from package.json; hutch keeps its own lock, without the version.
+    const file = path.join(DESKTOP, 'package.json');
+    fs.writeFileSync(file, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), version }, null, 2)}\n`);
   } else {
     const file = path.join(PLUGIN, 'gradle.properties');
     const text = fs.readFileSync(file, 'utf8');
@@ -330,6 +346,8 @@ function pageScripts() {
   return {
     vscode: listed(path.join(EXTENSION, 'src', 'panel.ts'), /const PAGE_SCRIPTS = \[([^\]]*)\]/),
     jetbrains: listed(path.join(PLUGIN, 'src', 'main', 'kotlin', 'io', 'github', 'yuriibondar', 'claudestrator', 'ui', 'PageHtml.kt'), /val SCRIPTS = listOf\(([^)]*)\)/),
+    // The desktop page loads them as files: `<script src="page/app.js">`, in its <body>.
+    desktop: listed(path.join(DESKTOP, 'src', 'view', 'index.html'), /<body>([\s\S]*)<\/body>/).filter((s) => s.startsWith('page/')).map((s) => s.slice('page/'.length)),
   };
 }
 
@@ -357,6 +375,42 @@ function verifyPlugin(zip, version) {
   }
   if (problems.length) throw new Error(`${path.relative(ROOT, zip)}: ${problems.join('; ')}`);
   console.log(`✔ Verified ${path.relative(ROOT, zip)}: version ${version}, ${entries.length} files, ${(fs.statSync(zip).size / 1024 / 1024).toFixed(2)} MB`);
+}
+
+/** The app bundle (desktop/build/stable-<os>-<arch>/<name>.app on macOS) and what the release ships: desktop/artifacts. */
+function buildDesktop() {
+  step('Build the desktop app (hutch run build: the engine thread, the page, the Electrobun bundle)', hutch, ['run', 'build'], { cwd: DESKTOP });
+  return path.join(DESKTOP, 'artifacts');
+}
+
+/**
+ * Checks what the release ships: the app's archive in desktop/artifacts (the .dmg holds an app that unpacks the same
+ * archive on first launch), listed and read with tar, which reads zstd.
+ */
+function verifyDesktop(artifacts, version) {
+  const problems = [];
+  const shipped = fs.existsSync(artifacts) ? fs.readdirSync(artifacts) : [];
+  const archive = shipped.find((f) => f.endsWith('.tar.zst'));
+  if (!archive) throw new Error(`the desktop app: no .tar.zst in ${path.relative(ROOT, artifacts)}`);
+  const file = path.join(artifacts, archive);
+  const entries = out('tar', ['-tf', file]).split('\n').filter(Boolean);
+  // Wherever the platform puts the app's resources (Contents/Resources in a macOS bundle): by what they end with.
+  const find = (rel) => entries.find((e) => e.endsWith(`/${rel}`));
+  const versionFile = find('Resources/version.json') || find('version.json');
+  const info = versionFile ? JSON.parse(out('tar', ['-xOf', file, versionFile])) : {};
+  if (info.version !== version) problems.push(`its version.json says ${info.version}, not ${version}`);
+  for (const need of ['app/bun/index.js', 'app/engine/worker.js', 'app/engine/node_modules/@anthropic-ai/sandbox-runtime/package.json', 'app/views/dashboard/index.html', 'app/views/dashboard/index.js', 'app/views/dashboard/theme.css', 'app/views/dashboard/page/app.css']) {
+    if (!find(need)) problems.push(`${need} is missing`);
+  }
+  const scripts = pageScripts();
+  if (scripts.desktop.join() !== scripts.vscode.join()) problems.push(`its dashboard loads ${scripts.desktop.join(', ')}, where VS Code loads ${scripts.vscode.join(', ')} (desktop/src/view/index.html, panel.ts PAGE_SCRIPTS)`);
+  for (const name of scripts.desktop) if (!find(`app/views/dashboard/page/${name}`)) problems.push(`the page has no ${name}`);
+  // Ours are bundled: a TypeScript source outside the shipped packages means one went in unbuilt.
+  const stray = entries.filter((e) => /\.ts$/.test(e) && !/\.d\.ts$/.test(e) && !e.includes('/node_modules/'));
+  if (stray.length) problems.push(`it ships sources: ${stray.slice(0, 3).join(', ')}`);
+  if (problems.length) throw new Error(`the desktop app: ${problems.join('; ')}`);
+  const size = shipped.reduce((n, f) => n + fs.statSync(path.join(artifacts, f)).size, 0);
+  console.log(`✔ Verified the desktop app ${version}: ${shipped.join(', ')} (${entries.length} files in the app, ${(size / 1024 / 1024).toFixed(1)} MB in all)`);
 }
 
 // ---------- tests ----------
@@ -396,6 +450,10 @@ function runTests(opts, due) {
       step('Typecheck the plugin sidecar', npm, ['run', 'typecheck'], { cwd: SIDECAR, env });
       step('Check the JetBrains plugin', gradlew, ['check', '--console=plain'], { cwd: PLUGIN, env });
     }
+    if (targets.some((t) => t.kind === 'desktop')) {
+      step('Typecheck the desktop app', hutch, ['run', 'typecheck'], { cwd: DESKTOP, env });
+      step('Test the desktop app', hutch, ['run', 'test'], { cwd: DESKTOP, env });
+    }
     if (opts.mode === 'live') step('Run two real tasks on haiku, low effort (npm run test:live)', npm, ['run', 'test:live'], { cwd: CORE, env });
   });
 }
@@ -407,6 +465,7 @@ function preflight(targets, opts) {
   for (const dir of [...dirs, ...(targets.includes('jetbrains') ? [SIDECAR] : [])]) {
     if (!fs.existsSync(path.join(dir, 'node_modules'))) throw new Error(`${path.relative(ROOT, dir)} has no node_modules: run npm ci there first`);
   }
+  if (targets.includes('desktop') && !fs.existsSync(path.join(DESKTOP, '.hutch', 'devkit'))) throw new Error('desktop has no Electrobun devkit: run hutch install in desktop/ first (desktop/README.md)');
   if (!fs.existsSync(path.join(ROOT, 'node_modules', '@semantic-release'))) throw new Error('the release tooling is not installed: run npm ci in the repo root');
   const paths = [...new Set(targets.flatMap((t) => TARGETS[t].paths))];
   const dirty = git('status', '--porcelain', '--', ...paths);
@@ -448,6 +507,10 @@ async function main() {
         verifyExtension(p.target, vsix, version);
         artifacts.push(vsix);
         p.vsix = vsix;
+      } else if (p.target.kind === 'desktop') {
+        const dir = buildDesktop();
+        verifyDesktop(dir, version);
+        artifacts.push(dir);
       } else {
         const zip = buildPlugin(version, p.due ? p.notes : null);
         verifyPlugin(zip, version);
@@ -481,6 +544,7 @@ async function main() {
     console.log(`  git push --follow-tags        # the release commits and their tags`);
     for (const vsix of builds.filter((p) => recorded.includes(p.tag) && p.vsix).map((p) => p.vsix)) console.log(`  npx @vscode/vsce publish --packagePath ${path.relative(ROOT, vsix)}`);
     if (recorded.some((t) => t.startsWith(TARGETS.jetbrains.tagPrefix))) console.log('  (cd jetbrains && ./gradlew signPlugin publishPlugin), or upload the .zip at plugins.jetbrains.com');
+    if (recorded.some((t) => t.startsWith(TARGETS.desktop.tagPrefix))) console.log('  the desktop app is in desktop/artifacts: sign and notarize it (desktop/README.md), then publish it');
   }
 }
 

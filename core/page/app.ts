@@ -327,6 +327,29 @@ interface Views {
   /** The HTML each region was last given, to skip a patch that would change nothing. */
   const rendered = new WeakMap<HTMLElement, string>();
 
+  /**
+   * A click is a press and a release on one element. A region drawn anew in between (an agent's push lands, a task
+   * card moves, the checks come back) replaces that element, and the browser drops the click: the button "needs a
+   * second click". While the pointer is pressed in a region, what it would be drawn with waits here, and goes in
+   * once the click has been handled; a newer drawing of the region replaces what waits.
+   */
+  let pressed: Element | null = null;
+  const held = new Map<HTMLElement, string>();
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button === 0) pressed = e.target instanceof Element ? e.target : null;
+  }, true);
+  // The click is dispatched with the release, before a timer: by then the click's own drawing has gone in.
+  const release = () => {
+    if (!pressed) return;
+    pressed = null;
+    if (held.size) setTimeout(() => {
+      for (const [el, html] of [...held]) patch(el, html);
+    }, 0);
+  };
+  // A drag that starts is no click: the drop draws its region at once.
+  for (const type of ['pointerup', 'pointercancel', 'dragstart'] as const) document.addEventListener(type, release, true);
+  window.addEventListener('blur', release);
+
   /** The attributes that tell an element from its neighbours, such as a task card (`data-id`) from the others. */
   const IDENTITY = ['key', 'action', 'id', 'name', 'tab', 'option', 'file'];
   /**
@@ -353,6 +376,12 @@ interface Views {
   function patch(name: string | HTMLElement, html: string) {
     const el = typeof name === 'string' ? $(`[data-region="${name}"]`) : name;
     if (!el) return false;
+    if (pressed && el.contains(pressed)) {
+      // Drawn now, the element under the pointer would go, and with it the click: after the release, then.
+      held.set(el, html);
+      return rendered.get(el) !== html;
+    }
+    held.delete(el);
     if (rendered.get(el) === html) return false;
     const active = document.activeElement;
     let key: string | null = null;
@@ -447,6 +476,8 @@ interface Views {
           </div>
         </div>`;
     }
+    // Start (choosing the account) is the whole window: no rail, no top bar.
+    $('.shell', app)!.classList.toggle('bare', S.route.name === 'start');
     renderNav();
   }
 
@@ -553,18 +584,27 @@ interface Views {
       <div class="tree-sections">${sections || '<div class="tree-empty muted small">No task matches</div>'}</div>`;
   }
 
-  /** Which Claude Code account the agents, MCP and limits use; one click to switch. */
+  /** An account's key, as the start screen's tiles and the aliases know it: its email, lowercase, or its folder. */
+  const accountKey = (a: { email?: string | undefined; dir: string }) => (a.email ? a.email.toLowerCase() : `dir:${a.dir}`);
+
+  /** Which Claude Code account the agents, MCP and limits use; one click to switch. Named as on the start screen. */
   function accountSwitcher(o: Overview | null, toolsOk: boolean) {
     if (!o || !o.account) return '';
     const a = o.account;
+    const aliases = o.accountAliases || {};
+    const alias = aliases[accountKey({ email: a.email, dir: a.shownDir })];
     const who = a.email || a.label;
     const rows = (o.accounts || [])
-      .map((x) => `<button data-action="set-account" data-dir="${esc(x.dir)}" class="${x.current ? 'current' : ''}">${x.current ? icon('check') : '<span class="ic"></span>'}<span class="acc-row"><b>${esc(x.email || x.label)}${x.loggedIn === false ? ' <span class="badge tone-error">signed out</span>' : ''}</b><span class="muted small">${esc(x.label)} · ${esc(x.dir.replace(/^\/Users\/[^/]+/, '~'))}</span></span></button>`)
+      .map((x) => {
+        const xAlias = aliases[accountKey(x)];
+        return `<button data-action="set-account" data-dir="${esc(x.dir)}" class="${x.current ? 'current' : ''}">${x.current ? icon('check') : '<span class="ic"></span>'}<span class="acc-row"><b>${esc(xAlias || x.email || x.label)}${x.loggedIn === false ? ' <span class="badge tone-error">signed out</span>' : ''}</b><span class="muted small">${xAlias ? `${esc(x.email || x.label)} · ` : ''}${esc(x.label)} · ${esc(x.dir.replace(/^\/Users\/[^/]+/, '~'))}</span></span></button>`;
+      })
       .join('');
     return `<span class="menu-wrap acc-wrap">
-      <button class="acc-btn ${a.loggedIn === false ? 'signed-out' : ''}" data-action="eff-menu" title="${esc(`${a.loggedIn === false ? 'Signed out — ' : ''}Claude account for agents, MCP and limits: ${who} (${a.shownDir}) — ${a.sourceText}`)}">${icon('user')}<span>${esc(who)}</span>${toolsOk ? `<i class="acc-ok" title="All tools ready">${icon('check')}</i>` : ''}▾</button>
+      <button class="acc-btn ${a.loggedIn === false ? 'signed-out' : ''}" data-action="eff-menu" title="${esc(`${a.loggedIn === false ? 'Signed out — ' : ''}Claude account for agents, MCP and limits: ${alias ? `${alias}, ` : ''}${who} (${a.shownDir}) — ${a.sourceText}`)}">${icon('user')}<span>${esc(alias || who)}</span>${toolsOk ? `<i class="acc-ok" title="All tools ready">${icon('check')}</i>` : ''}▾</button>
       <div class="menu acc-menu">
         <div class="menu-title">Claude account for agents, MCP servers and limits</div>
+        ${window.__csHost === 'desktop' ? `<button data-action="nav" data-name="start">${icon('users')}<span class="acc-row"><b>All accounts…</b><span class="muted small">the start screen: pick, add, name or remove one</span></span></button>` : ''}
         ${rows}
         ${a.source === 'setting' ? `<button data-action="set-account" data-dir="">${icon('refresh')}<span class="acc-row"><b>Automatic</b><span class="muted small">follow ctx-man / VS Code, else ~/.claude</span></span></button>` : `<div class="menu-note muted small">${icon('info')}Now: ${esc(a.sourceText)}</div>`}
       </div>
@@ -964,7 +1004,9 @@ interface Views {
     render() {
       const o = S.overview;
       if (!o!.root) {
-        patch('onboarding', `<div class="empty-state">${icon('folder', 'big')}<h2>Open a folder</h2><p>Claudestrator works on the repositories of a workspace folder. Open the folder that holds your repos (or a single repo).</p></div>`);
+        patch('onboarding', window.__csHost === 'desktop'
+          ? `<div class="empty-state">${icon('folder', 'big')}<h2>Choose a Claudestrator directory</h2><p>Claudestrator keeps its config, tasks and plans in a directory of its own, apart from the repositories it works on.</p><button class="btn primary" data-action="nav" data-name="settings">${icon('gear')}Open Settings</button></div>`
+          : `<div class="empty-state">${icon('folder', 'big')}<h2>Open a folder</h2><p>Claudestrator works on the repositories of a workspace folder. Open the folder that holds your repos (or a single repo).</p></div>`);
         patch('tasks', '');
         return;
       }
@@ -1197,7 +1239,7 @@ interface Views {
       debounce('preview', async () => {
         if (S.route.name !== 'home') return;
         const text = S.draft.text.trim();
-        if (!text && !S.draft.key) return patch('detect', `<span class="muted small">Tip: select text in an editor and run “Claudestrator: Start a Task from Selection”.</span>`);
+        if (!text && !S.draft.key) return patch('detect', `<span class="muted small">${window.__csHost === 'desktop' ? 'Tip: File → New Task (⌘N, Ctrl+N elsewhere) brings you here from any screen.' : 'Tip: select text in an editor and run “Claudestrator: Start a Task from Selection”.'}</span>`);
         let p: Preview;
         try {
           p = await call('preview', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: S.draft.scenario });
@@ -2227,7 +2269,7 @@ interface Views {
   // Live durations ("2m 13s") tick without re-rendering anything else.
   setInterval(() => tick(), 1000);
 
-  window.CS = { vscode, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
+  window.CS = { vscode, LOGO, accountKey, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
     // Called by the last script to load (config.js) once every view is registered.
     boot: async () => {
       renderShell();

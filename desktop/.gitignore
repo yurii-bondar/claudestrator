@@ -1,0 +1,7 @@
+node_modules/
+.hutch/
+.gen/
+build/
+artifacts/
+.cottontail-tmp/
+*.tsbuildinfo

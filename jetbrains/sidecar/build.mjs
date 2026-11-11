@@ -1,6 +1,6 @@
 // Bundles the Claudestrator engine (core/src, driven by vscode/src/orchestrator.ts and panel.ts) and the stdio bridge
 // into dist/engine/, next to the dashboard page (core/page, built into dist/page as every host serves it).
-// `vscode` is replaced by src/vscode-shim.ts, which hands what the engine asks of an editor to the IDE.
+// `vscode` is replaced by core/src/vscode-shim.ts, which hands what the engine asks of an editor to the IDE.
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -26,7 +26,7 @@ await build({
   ...common,
   entryPoints: [join(here, 'src/main.ts')],
   outfile: join(out, 'dist/sidecar.js'),
-  alias: { vscode: join(here, 'src/vscode-shim.ts') },
+  alias: { vscode: join(core, 'src/vscode-shim.ts') },
   // `yaml` is bundled from the core's node_modules. The sandbox runtime is not: the engine starts its CLI as a
   // process of its own (checks and git hooks run in it), so it ships as files, below.
   nodePaths: [join(core, 'node_modules')],

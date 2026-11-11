@@ -6,9 +6,10 @@ Claudestrator: a pipeline of Claude Code agents (plan → your approval → code
 |---|---|---|
 | `core/` | engine (`src/`) and dashboard page (`page/`) | imports no editor API; tests in `test/` (unit, end to end against `test/fixtures/fake-claude.ts`, `live/` on real Claude Code); `scripts/build-page.mjs` builds the page into a host's folder |
 | `vscode/` | the VS Code extension | `extension.ts` wires `activate()`; `src/orchestrator.ts` drives the engine, `src/panel.ts` serves the page in a webview, `src/tree.ts` the task list; preview harness in `test/harness/`; `scripts/design-sync/` rebuilds the Penpot file's Screens page from the dashboard (its README) |
-| `jetbrains/` | the plugin for IntelliJ-based IDEs | Kotlin (`src/main/kotlin`) around a Node sidecar (`sidecar/`) that bundles `vscode/src` + `core/src` with `vscode` shimmed; see its README |
+| `jetbrains/` | the plugin for IntelliJ-based IDEs | Kotlin (`src/main/kotlin`) around a Node sidecar (`sidecar/`) that bundles `vscode/src` + `core/src` with `vscode` shimmed (`core/src/vscode-shim.ts`); see its README |
+| `desktop/` | the desktop app (Electrobun) | one Bun process: the window, menu and native dialogs on the main thread (`src/bun`), the engine (`vscode/src` + `core/src` on the same shim) in a worker (`src/engine`), the page in the system webview (`src/view`); see its README |
 
-The root `package.json` is release tooling only (semantic-release rules, husky). Releases come from `scripts/release.mjs`: `npm run release:vsix | release:jetbrains | release:all`, or `npm run release -- <build|test|live> <vsix|jetbrains|all…> [--dry-run]`. A desktop app is planned (`desktop`, not in the repo yet; the release script already reserves the name).
+The root `package.json` is release tooling only (semantic-release rules, husky). Releases come from `scripts/release.mjs`: `npm run release:vsix | release:jetbrains | release:desktop | release:all`, or `npm run release -- <build|test|live> <vsix|jetbrains|desktop|all…> [--dry-run]`.
 
 ## Build
 
@@ -17,8 +18,9 @@ Everything is TypeScript (strict, `noUncheckedIndexedAccess`, `exactOptionalProp
 - `core/`: `npm ci`, then `npm run build | typecheck | lint | test`, `test:live`, `test:live:forges`, `eval`. Build output in `dist/` (`dist/page` is the page).
 - `vscode/`: needs `npm ci` in `core/` first. Its `tsc` has `rootDir: ".."` and compiles `core/src` with it: `dist/vscode/extension.js` (`main`), `dist/core/src/*`, and the page in `dist/page`. `npm test` runs the host's tests (`dist/vscode/test`).
 - `jetbrains/`: `npm ci` in `core/`, `vscode/` (the `@types/vscode` the sidecar is checked against) and `sidecar/`; `./gradlew runIde | buildPlugin | verifyPlugin`. `buildPlugin` runs the sidecar's build.
+- `desktop/`: `npm ci` in `core/` and `vscode/`, then `hutch install` in `desktop/` (Bun and the Electrobun devkit); `hutch run start | dev | build | test | typecheck`. Scripts go through `hutch run` (`hutch build`/`hutch test` are hutch's own).
 
-The page's scripts (`core/page/*.ts`) are plain browser scripts with no imports, typechecked together (`tsconfig.page.json`) and transpiled one by one. Every host lists them in the same order: `PAGE_SCRIPTS` in `vscode/src/panel.ts`, `SCRIPTS` in `jetbrains/.../ui/PageHtml.kt` (the release script checks they agree).
+The page's scripts (`core/page/*.ts`) are plain browser scripts with no imports, typechecked together (`tsconfig.page.json`) and transpiled one by one. Every host lists them in the same order: `PAGE_SCRIPTS` in `vscode/src/panel.ts`, `SCRIPTS` in `jetbrains/.../ui/PageHtml.kt`, the `<script>` tags of `desktop/src/view/index.html` (the release script checks they agree). A host that is not VS Code tells the page so with `window.__csHost` (the desktop sets `'desktop'`) for the few texts that differ.
 
 ## Rules
 
@@ -32,5 +34,5 @@ The page's scripts (`core/page/*.ts`) are plain browser scripts with no imports,
 - What the host and the page say to each other is typed in `core/src/wire.ts` (types only: the page cannot load modules). The host receives a page message as `unknown` (`DashboardPanel.onMessage`) and narrows it; the page reads replies through the same types (`core/page/globals.d.ts`).
 - Functions with 3+ positional parameters take an options object. Edges (fs, process runner, git, clock) come in as small interfaces where a test needs a fake.
 - No `*Sync` I/O in the extension host (`ts-performance`).
-- Add a test for logic changes: in `core/test` for the engine and the page, in `vscode/test` for the extension's host code.
+- Add a test for logic changes: in `core/test` for the engine, the page and the shim, in `vscode/test` for the extension's host code, in `desktop/test` (`bun test`) for the desktop app's own.
 - Delete dead code. No flags or parameters "for the future".
