@@ -17,6 +17,7 @@ import { LOG_FILE, type FromEngine, type ToEngine } from '../shared/protocol';
 import type { DashboardRPC, PageMessage } from '../shared/rpc';
 import type { Route } from '../../../core/src/wire';
 import { placeFrame, readFrame, frameSaver, type Frame } from './frame';
+import { acceptFirstMouse } from './click-through';
 import { appMenu, clickedAction, type MenuAction } from './menu';
 import { answer } from './requests';
 
@@ -178,6 +179,10 @@ function finishQuit(): void {
   quit = 'go';
   Utils.quit();
 }
+
+// Back from another app, the first click on the window is a click, not only the window coming forward.
+const clickThrough = acceptFirstMouse();
+if (clickThrough) console.error('[desktop] the first click on the window only brings it forward:', clickThrough);
 
 // The app opens on Start: which Claude account the agents run under (the first time, only the tile that adds one).
 openWindow({ name: 'start' });
