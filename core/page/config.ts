@@ -75,6 +75,12 @@ interface Views {
   const asEffort = (v: string) => ALL_EFFORTS.find((e) => e === v);
   const asOutput = (v: string) => ALL_OUTPUTS.find((o) => o === v);
   const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+  /**
+   * The desktop app has no editor around it: the folder Claudestrator works from is its own (the Claudestrator
+   * directory), the repos it works on are its work directories, and secrets go to the system's keychain.
+   */
+  const DESKTOP = window.__csHost === 'desktop';
+  const SECRET_STORE = DESKTOP ? 'your system keychain' : "VS Code's secret storage";
 
   /**
    * Effort choices with the real default spelled out ("Default — medium"), limited to what the model supports.
@@ -697,7 +703,7 @@ interface Views {
     const b = s.bitbucket;
     return `<section class="card settings-card" id="sec-bitbucket"><h3>${icon('pr')}Bitbucket Cloud</h3>
       ${b.connected ? `<div class="tool-check ok">${icon('check')}<b>Opening pull requests</b><span>with the API token below, for repos whose origin is on bitbucket.org</span></div>` : `<div class="tool-check">${icon('info')}<b>Opening pull requests</b><span>not set up: needed only for repos on bitbucket.org (GitHub uses gh, GitLab glab)</span></div>`}
-      <p class="muted small">Bitbucket has no CLI like gh, so Claudestrator opens its pull requests over Bitbucket's API, with an Atlassian API token with Bitbucket's scopes (pull requests: read and write; repositories and your account: read). It is kept in VS Code's secret storage, and no agent gets it. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
+      <p class="muted small">Bitbucket has no CLI like gh, so Claudestrator opens its pull requests over Bitbucket's API, with an Atlassian API token with Bitbucket's scopes (pull requests: read and write; repositories and your account: read). It is kept in ${SECRET_STORE}, and no agent gets it. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
       <div class="field-row">
         <label class="field"><span>Email <span class="muted">empty = the Jira email</span></span><input id="bb-email" class="input" value="${esc(b.email)}" placeholder="${esc(s.atlassian.email || 'you@acme.com')}"></label>
         <label class="field"><span>API token ${b.hasToken ? '<span class="badge tone-ok">saved</span>' : b.fromEnv ? '<span class="chip small">from env</span>' : ''}</span><input id="bb-token" class="input mono" type="password" placeholder="${b.hasToken ? '•••••••• (leave empty to keep)' : 'paste the token'}"></label>
@@ -712,7 +718,7 @@ interface Views {
     const tag = projectTag(c);
     return `<section class="card settings-card" id="sec-atlassian"><h3>${icon('jira')}Jira & Confluence</h3>
       ${s.atlassian.connected ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>with the API token below (Jira REST)</span></div>` : s.atlassian.mcp ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>through the MCP server “${esc(s.atlassian.mcp.server)}”, signed in with Claude Code. No token needed; a short read-only agent reads each issue (a few cents).</span></div>` : `<div class="tool-check bad">${icon('alert')}<b>Reading tickets</b><span>not set up: sign in to an Atlassian MCP server below, or add an API token</span></div>`}
-      <p class="muted small">An API token (optional with MCP) makes reading instant and free, and lets Claudestrator post Jira comments. It is kept in VS Code's secret storage. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
+      <p class="muted small">An API token (optional with MCP) makes reading instant and free, and lets Claudestrator post Jira comments. It is kept in ${SECRET_STORE}. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
       <div class="field-row three">
         <label class="field"><span>Site</span><input id="at-site" class="input mono" value="${esc(s.atlassian.site)}" placeholder="acme.atlassian.net"></label>
         <label class="field"><span>Email</span><input id="at-email" class="input" value="${esc(s.atlassian.email)}" placeholder="you@acme.com"></label>
@@ -745,7 +751,39 @@ interface Views {
   // ---------- settings ----------
 
   /** The sections of Settings, in their order on the page: the list on its left jumps to them. */
-  const SETTINGS_SECTIONS = [['general', 'How agents work'], ['workspace', 'Workspace'], ['safety', 'Safety'], ['claude', 'Claude Code'], ['notifications', 'Notifications'], ['config', 'Config files']] as const;
+  const SETTINGS_SECTIONS: readonly (readonly [string, string])[] = [
+    ['general', 'How agents work'],
+    ...(DESKTOP ? ([['workspace', 'Claudestrator directory'], ['workdirs', 'Work directories']] as const) : ([['workspace', 'Workspace']] as const)),
+    ['safety', 'Safety'],
+    ['claude', 'Claude Code'],
+    ['notifications', 'Notifications'],
+    ['config', 'Config files'],
+  ];
+
+  /** Where Claudestrator works from: in an editor, the folder with the repos; on the desktop, its own directory and the repos it works on. */
+  function workspaceSections(s: SettingsData, cfg: ConfigOk['config'] | null) {
+    if (!DESKTOP) {
+      return `<section class="card settings-card" id="sec-workspace"><h3>${icon('folder')}Workspace</h3>
+          <div class="field"><span>Folder with the repos and <code>.claudestrator/</code> <span class="muted">${s.workspaceFolder ? 'chosen here' : 'the first folder open in VS Code'}</span></span>
+            <div class="input-row"><input class="input mono" value="${esc(s.root || '')}" readonly><button class="btn sm" data-action="pick-workspace">${icon('folder')}Browse…</button>${s.workspaceFolder ? '<button class="btn ghost sm" data-action="reset-workspace">Use the open folder</button>' : ''}</div>
+            <small class="muted">Tasks live in <code>.orch/</code> of this folder. Repositories can also live elsewhere: add them under Repos &amp; checks.</small></div>
+        </section>`;
+    }
+    const root = s.root || '';
+    // A repo's path is relative to the directory unless it is absolute (one added from elsewhere on disk).
+    const where = (p: string) => (/^([\\/]|[A-Za-z]:)/.test(p) || !root ? p : `${root}/${p}`);
+    const repos = cfg ? Object.values(cfg.repos) : [];
+    return `<section class="card settings-card" id="sec-workspace"><h3>${icon('folder')}Claudestrator directory</h3>
+          <div class="field"><span>Where Claudestrator keeps its config, tasks, plans and reports <span class="muted">${s.workspaceFolder ? 'chosen here' : 'the default'}</span></span>
+            <div class="input-row"><input class="input mono" value="${esc(root)}" readonly><button class="btn sm" data-action="pick-workspace">${icon('folder')}Browse…</button>${s.workspaceFolder ? '<button class="btn ghost sm" data-action="reset-workspace">Use the default</button>' : ''}</div>
+            <small class="muted"><code>.claudestrator/config.yaml</code> is the config; <code>.orch/</code> holds the tasks with their plans, reports and transcripts, and the worktrees of tasks that use them.</small></div>
+        </section>
+        <section class="card settings-card" id="sec-workdirs"><h3>${icon('repo')}Work directories</h3>
+          <p class="muted small">The repositories Claudestrator sees and works in, anywhere on disk. Agents read them; a task changes only the ones its plan names.</p>
+          ${repos.length ? repos.map((r) => `<div class="tool-check ok">${icon('repo')}<b>${esc(r.name)}</b><span class="mono">${esc(where(r.path))}</span></div>`).join('') : `<p class="muted small">None yet: add the repositories (or a folder that holds them) agents should work in.</p>`}
+          <div class="row"><button class="btn sm" data-action="nav" data-name="repos">${icon('plus')}${repos.length ? 'Add or change…' : 'Add work directories…'}</button></div>
+        </section>`;
+  }
 
   views.settings = {
     s: null,
@@ -807,11 +845,7 @@ interface Views {
           </div>
         </section>
 
-        <section class="card settings-card" id="sec-workspace"><h3>${icon('folder')}Workspace</h3>
-          <div class="field"><span>Folder with the repos and <code>.claudestrator/</code> <span class="muted">${s.workspaceFolder ? 'chosen here' : 'the first folder open in VS Code'}</span></span>
-            <div class="input-row"><input class="input mono" value="${esc(s.root || '')}" readonly><button class="btn sm" data-action="pick-workspace">${icon('folder')}Browse…</button>${s.workspaceFolder ? '<button class="btn ghost sm" data-action="reset-workspace">Use the open folder</button>' : ''}</div>
-            <small class="muted">Tasks live in <code>.orch/</code> of this folder. Repositories can also live elsewhere: add them under Repos &amp; checks.</small></div>
-        </section>
+        ${workspaceSections(s, cfg)}
 
         <section class="card settings-card" id="sec-safety"><h3>${icon('shield')}Safety</h3>
           <p class="muted small">Always enforced: agents never commit, push, switch branches or run destructive git/rm commands, edit files only inside the repo of their step (never Claudestrator's config), never read your keys and credentials, publish nothing, and change nothing through MCP servers unless an agent's tools name the tool. Claudestrator itself never force-pushes, never merges PRs and pushes only after you confirm.</p>
@@ -863,7 +897,7 @@ interface Views {
       'pick-workspace': async () => {
         const dir = await attempt('pickWorkspace');
         if (!dir) return;
-        toast(`Workspace: ${dir}`, 'ok');
+        toast(`${DESKTOP ? 'Claudestrator directory' : 'Workspace'}: ${dir}`, 'ok');
         await window.CS.loadOverview();
         views.settings.load();
       },

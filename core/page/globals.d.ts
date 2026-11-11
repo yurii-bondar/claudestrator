@@ -308,6 +308,8 @@ interface LoadedEdge {
 }
 
 interface Window {
+  /** Set by the desktop app's page before these scripts run; VS Code and JetBrains leave it out. */
+  __csHost?: 'desktop';
   escapeHtml: (s: unknown) => string;
   renderMarkdown: (text: string) => string;
   stripJsonBlock: (text: string) => string;

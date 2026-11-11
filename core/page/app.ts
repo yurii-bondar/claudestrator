@@ -964,7 +964,9 @@ interface Views {
     render() {
       const o = S.overview;
       if (!o!.root) {
-        patch('onboarding', `<div class="empty-state">${icon('folder', 'big')}<h2>Open a folder</h2><p>Claudestrator works on the repositories of a workspace folder. Open the folder that holds your repos (or a single repo).</p></div>`);
+        patch('onboarding', window.__csHost === 'desktop'
+          ? `<div class="empty-state">${icon('folder', 'big')}<h2>Choose a Claudestrator directory</h2><p>Claudestrator keeps its config, tasks and plans in a directory of its own, apart from the repositories it works on.</p><button class="btn primary" data-action="nav" data-name="settings">${icon('gear')}Open Settings</button></div>`
+          : `<div class="empty-state">${icon('folder', 'big')}<h2>Open a folder</h2><p>Claudestrator works on the repositories of a workspace folder. Open the folder that holds your repos (or a single repo).</p></div>`);
         patch('tasks', '');
         return;
       }
@@ -1197,7 +1199,7 @@ interface Views {
       debounce('preview', async () => {
         if (S.route.name !== 'home') return;
         const text = S.draft.text.trim();
-        if (!text && !S.draft.key) return patch('detect', `<span class="muted small">Tip: select text in an editor and run “Claudestrator: Start a Task from Selection”.</span>`);
+        if (!text && !S.draft.key) return patch('detect', `<span class="muted small">${window.__csHost === 'desktop' ? 'Tip: File → New Task (⌘N, Ctrl+N elsewhere) brings you here from any screen.' : 'Tip: select text in an editor and run “Claudestrator: Start a Task from Selection”.'}</span>`);
         let p: Preview;
         try {
           p = await call('preview', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: S.draft.scenario });
