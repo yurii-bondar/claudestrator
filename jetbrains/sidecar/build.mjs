@@ -7,13 +7,13 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const ext = resolve(here, '../../../claudestrator');
+const ext = resolve(here, '../../vscode');
 const out = resolve(here, 'dist/engine');
 
 // The webview scripts are built by the extension itself (`npm run build` there).
 const webviewJs = join(ext, 'dist/media');
 if (!existsSync(join(webviewJs, 'app.js'))) {
-  console.error(`Missing ${webviewJs}/app.js. Run \`npm ci && npm run build\` in claudestrator/ first.`);
+  console.error(`Missing ${webviewJs}/app.js. Run \`npm ci && npm run build\` in vscode/ first.`);
   process.exit(1);
 }
 

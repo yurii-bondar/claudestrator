@@ -77,13 +77,13 @@ intellijPlatform {
 }
 
 val npm = if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm"
-val extensionDir = layout.projectDirectory.dir("../../claudestrator")
+val extensionDir = layout.projectDirectory.dir("../vscode")
 val sidecarDir = layout.projectDirectory.dir("sidecar")
 
 // The webview scripts are the VS Code extension's own build output; the sidecar bundles the engine around them.
 val buildExtension by tasks.registering(Exec::class) {
     group = "build"
-    description = "Builds claudestrator/ (the webview scripts and the engine's types)."
+    description = "Builds vscode/ (the webview scripts and the engine's types)."
     workingDir = extensionDir.asFile
     commandLine(npm, "run", "build")
     inputs.files(extensionDir.asFileTree.matching { include("package-lock.json", "extension.ts", "src/**", "media/**", "tsconfig*.json") })

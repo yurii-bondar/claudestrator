@@ -1,6 +1,6 @@
 # Claudestrator for JetBrains IDEs
 
-The [Claudestrator](../../claudestrator) extension for VS Code, as a plugin for WebStorm, IntelliJ IDEA, PyCharm, GoLand and the other IntelliJ-based IDEs. The dashboard, the task list, the status bar items and the notifications behave the same, because they are the same code.
+The [Claudestrator](../vscode) extension for VS Code, as a plugin for WebStorm, IntelliJ IDEA, PyCharm, GoLand and the other IntelliJ-based IDEs. The dashboard, the task list, the status bar items and the notifications behave the same, because they are the same code.
 
 ## How it works
 
@@ -44,7 +44,7 @@ When the extension's engine or page changes, nothing here changes unless the wir
 ## Build and run
 
 ```bash
-(cd ../../claudestrator && npm ci)   # once: the engine's and the page's dependencies
+(cd ../vscode && npm ci)        # once: the engine's and the page's dependencies
 (cd sidecar && npm ci)               # once: esbuild
 ./gradlew runIde                     # an IDE with the plugin in a sandbox
 ./gradlew buildPlugin                # build/distributions/claudestrator-<version>.zip

@@ -16,7 +16,7 @@ component instances).
 
 ## Run
 
-1. The preview, configured, with the fake agent quick (from `claudestrator/`):
+1. The preview, configured, with the fake agent quick (from `vscode/`):
 
    ```sh
    npm run build && PREVIEW_SETUP=1 PREVIEW_DELAY=50 node dist/test/harness/server.js
