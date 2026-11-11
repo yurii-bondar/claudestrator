@@ -1,0 +1,11 @@
+{
+  // The main thread and the page's bridge, with Electrobun's API sources: as tsconfig.json, less the two flags those
+  // sources do not pass (optional properties assigned `undefined`, functions with an implicit return).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": false
+  },
+  "include": ["src/bun/**/*.ts", "src/view/**/*.ts", "src/shared/**/*.ts", "test/app.test.ts", "electrobun.config.ts", "hutch.config.ts"],
+  "exclude": []
+}

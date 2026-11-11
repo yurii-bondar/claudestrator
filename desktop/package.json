@@ -1,0 +1,11 @@
+{
+  "name": "claudestrator-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Claudestrator as a desktop app: the engine (../core, with the host code of ../vscode) and the dashboard in an Electrobun window.",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "1.4.0",
+    "@types/node": "^22.20.5"
+  }
+}

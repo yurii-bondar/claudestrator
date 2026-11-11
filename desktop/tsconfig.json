@@ -1,0 +1,28 @@
+{
+  // The engine's thread, the shared protocol, the tests and the build script, as strict as the rest of the repo.
+  // What talks to Electrobun (src/bun, src/view) is checked by tsconfig.app.json: Electrobun ships its API as
+  // TypeScript sources, which do not pass two of the repo's flags.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["bun"],
+    "typeRoots": ["./node_modules/@types"],
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "sourceMap": false,
+    "baseUrl": ".",
+    "paths": {
+      "electrobun": [".hutch/devkit/api/sdks/main/index.ts"],
+      "electrobun/bun": [".hutch/devkit/api/sdks/main/index.ts"],
+      "electrobun/bun/*": [".hutch/devkit/api/sdks/main/entries/*.ts"],
+      "electrobun/view": [".hutch/devkit/api/browser/index.ts"],
+      "vscode": ["../vscode/node_modules/@types/vscode"],
+      "yaml": ["../core/node_modules/yaml"]
+    }
+  },
+  "include": ["src/engine/**/*.ts", "src/shared/protocol.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["test/app.test.ts"]
+}

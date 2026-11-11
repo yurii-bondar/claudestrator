@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The app icon: the rail's logo (core/page/app.ts, LOGO) on the brand gradient (the page tokens cs-brand-from and cs-brand-to), on macOS's
+       icon grid (an 824 px square with rounded corners, in a 1024 px canvas, with its shadow). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e3896a"/>
+      <stop offset="1" stop-color="#bd5b3a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <g transform="translate(248 248) scale(22)" fill="#faf9f5" stroke="#faf9f5"><path stroke="none" d="M12.83 7.60 L12.45 1.65 A0.45 0.45 0 0 0 11.55 1.65 L11.17 7.60Z M12.72 8.02 L14.72 3.78 A0.45 0.45 0 0 0 13.95 3.33 L11.28 7.18Z M12.42 8.32 L17.05 5.20 A0.45 0.45 0 0 0 16.60 4.43 L11.58 6.88Z M12.00 8.43 L16.54 8.05 A0.45 0.45 0 0 0 16.54 7.15 L12.00 6.77Z M11.58 8.32 L16.82 10.90 A0.45 0.45 0 0 0 17.27 10.12 L12.42 6.88Z M11.28 8.02 L14.01 11.98 A0.45 0.45 0 0 0 14.79 11.53 L12.72 7.18Z M11.17 7.60 L11.55 13.04 A0.45 0.45 0 0 0 12.45 13.04 L12.83 7.60Z M11.28 7.18 L9.28 11.42 A0.45 0.45 0 0 0 10.05 11.87 L12.72 8.02Z M11.58 6.88 L6.62 10.19 A0.45 0.45 0 0 0 7.07 10.96 L12.42 8.32Z M12.00 6.77 L7.39 7.15 A0.45 0.45 0 0 0 7.39 8.05 L12.00 8.43Z M12.42 6.88 L7.35 4.40 A0.45 0.45 0 0 0 6.90 5.17 L11.58 8.32Z M12.72 7.18 L10.02 3.27 A0.45 0.45 0 0 0 9.24 3.72 L11.28 8.02Z"/><circle stroke="none" cx="12" cy="7.6" r="1.92"/><path fill="none" stroke-width="1.5" stroke-linecap="round" d="M12 14.6 L5.6 19.1 M12 14.6 L12 19.6 M12 14.6 L18.4 19.1"/><circle stroke="none" cx="4.6" cy="19.9" r="1.6"/><circle stroke="none" cx="12" cy="20.9" r="1.6"/><circle stroke="none" cx="19.4" cy="19.9" r="1.6"/></g>
+</svg>
