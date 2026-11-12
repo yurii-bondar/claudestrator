@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as YAML from 'yaml';
 
 import { SKILLS, listSkills, addSkill, removeSkill, skillsDirOf } from '../src/skills';
-import { validateLibraryLayer } from '../src/protocol';
+import { validateConfigLayer, validateLibraryLayer } from '../src/protocol';
 import { BUILTIN } from '../src/config';
 
 const tmp = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -23,7 +23,7 @@ test('skills: added to the account or the project, seen as added, another versio
   assert.equal(skillsDirOf('user', { accountDir: '/Users/me/.claude-work', workspace: null }), '/Users/me/.claude-work/skills', "the account's own folder");
   assert.throws(() => skillsDirOf('project', { accountDir: '/x', workspace: null }), /Open a folder/);
 
-  const state = async () => (await listSkills({ userDir, projectDir })).map((k) => [k.name, k.user.state, k.project?.state]);
+  const state = async () => (await listSkills({ userDir, projectDir })).filter((k) => k.name === 'claudestrator-library').map((k) => [k.name, k.user.state, k.project?.state]);
   assert.deepEqual(await state(), [['claudestrator-library', 'absent', 'absent']]);
 
   await addSkill({ name: 'claudestrator-library', skillsDir: userDir });
@@ -52,6 +52,30 @@ test('skills: each SKILL.md names its folder and says when Claude Code should us
     assert.match(meta.description, /Use when/);
     assert.ok(meta.description.length <= 1024, 'Claude Code reads a short description');
   }
+});
+
+/** The YAML examples of a skill's SKILL.md, parsed. */
+const yamlOf = (md: string) => [...md.matchAll(/~~~yaml\n([\s\S]*?)~~~/g)].map((m) => YAML.parse(m[1]!) as Record<string, unknown>);
+
+test('skills: Claudestrator brings the library, workspace map and config skills', () => {
+  assert.deepEqual(SKILLS.map((s) => s.name), ['claudestrator-library', 'claudestrator-workspace-map', 'claudestrator-config']);
+});
+
+test("skills: every skill's YAML examples are config Claudestrator accepts", () => {
+  for (const s of SKILLS) {
+    const blocks = yamlOf(s.files['SKILL.md']!);
+    assert.ok(blocks.length, `${s.name} has examples`);
+    for (const [i, block] of blocks.entries()) assert.deepEqual(validateConfigLayer(block), [], `${s.name}, example ${i + 1}`);
+  }
+});
+
+test("skills: the config skill's example covers what config.yaml takes, and the map skill wires the map up as the dashboard does", () => {
+  const config = Object.assign({}, ...yamlOf(SKILLS.find((s) => s.name === 'claudestrator-config')!.files['SKILL.md']!)) as Record<string, unknown>;
+  for (const key of ['repos', 'baseBranch', 'language', 'git', 'limits', 'context', 'jira', 'intake', 'groups', 'instructions', 'policy']) assert.ok(key in config, key);
+  const gates = (config.repos as Record<string, { gates?: { name: string; when?: string; dir?: string; timeout?: number }[] }>).api!.gates!;
+  assert.ok(gates.some((g) => g.when) && gates.some((g) => g.dir) && gates.some((g) => g.timeout), 'when, dir and timeout shown');
+  const map = yamlOf(SKILLS.find((s) => s.name === 'claudestrator-workspace-map')!.files['SKILL.md']!);
+  assert.deepEqual(map, [{ context: ['./workspace.md'] }], 'as Create workspace map lists it');
 });
 
 test("skills: the library skill's examples are a library Claudestrator accepts", () => {

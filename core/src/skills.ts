@@ -160,12 +160,195 @@ Never tell an agent to commit, push, switch branches, open PRs or post comments:
 - The README says what the library is for, its scenarios, and how to add it.
 `;
 
+/** How to write the workspace map every agent reads first: the repos, the contracts between them, the merge order. */
+const WORKSPACE_MAP_SKILL = `---
+name: claudestrator-workspace-map
+description: Writes or refreshes a Claudestrator workspace map (.claudestrator/workspace.md), the file every Claudestrator agent reads first, with the repositories, the contracts between them, and the order changes merge in. Use when asked to write, fill in, update or check a Claudestrator workspace map, or when Claudestrator's plans miss a repository or get the order of a cross-repo change wrong.
+---
+
+# Writing a Claudestrator workspace map
+
+The workspace map is a Markdown file a project's \`.claudestrator/config.yaml\` lists under \`context:\`. Claudestrator hands every agent of every task its path before the ticket: the planner picks the repos from it, lists the contracts a change crosses and orders the repos by it; developers, testers and reviewers check a cross-repo change against it. It is read in every step of every task, so each line costs many times over: short, and nothing but facts.
+
+## Work in this order
+
+1. Read \`.claudestrator/config.yaml\`: the names under \`repos:\` (use exactly these), their \`path\` (from the workspace folder; the name when there is none) and \`role\`. Read the map when there is one, and keep what is still true.
+2. For each repository read its README, CLAUDE.md, manifest (package.json, go.mod, pyproject.toml…) and entry points: what it is, who uses it, its stack in a few words.
+3. Find the contracts in the code, not in the docs alone: HTTP and gRPC APIs (routes, OpenAPI or proto files, generated clients), events and queues (topics, message schemas), shared packages and types, a database two repos use, config or feature flags another repo reads, files one repo generates for another. For each: the producer, the consumers, where it is defined (a path), and how it may change. Confirm each from both sides: search the consumer for the route, topic or package.
+4. Work out the order changes merge and deploy in: a producer before its consumers, a migration before the code that needs it, a shared package published before its users take it. Note what must stay backward compatible while they roll out.
+5. Write the map in the shape below, and make sure \`context:\` lists it.
+6. Tell the user what you could not confirm. In the map, mark a guess as one; never write it as a fact.
+
+## The shape
+
+~~~markdown
+# Workspace map
+
+## Repositories
+- **api** (\`services/api\`): public REST API of the web and mobile apps · NestJS, Postgres
+- **web** (\`apps/web\`): the customers' web app · Nuxt 3
+- **billing** (\`services/billing\`): invoices and payments · Go
+
+## Contracts
+- **REST /v2/orders**: api produces it (\`src/orders/orders.controller.ts\`, OpenAPI in \`openapi/orders.yaml\`); web consumes it (\`composables/useOrders.ts\`). Fields are only added; removing one needs /v3.
+- **Event \`order.paid\`**: api publishes it (\`src/events/order-paid.ts\`); billing handles it (\`internal/handlers/order_paid.go\`). Its schema is in api's \`events/schemas/order-paid.json\`.
+
+## Merge order
+1. api (its migrations run on deploy; old fields stay until web stops reading them)
+2. billing, web
+
+## Notes for agents
+- What a planner gets wrong without being told, one line each: "prices travel in cents; only web formats them".
+~~~
+
+- Repository names exactly as \`repos:\` has them: a plan names repos by them.
+- Paths from each repository's root, so an agent can open them.
+- What crosses repositories only. Each repository's own CLAUDE.md and rules reach the agents working there; do not copy them.
+- Under about 150 lines. A long map is read in every step and buries what matters.
+- No secrets, no URLs with credentials, no hosts the agents do not need.
+
+## Wiring it up
+
+~~~yaml
+# .claudestrator/config.yaml
+context: [./workspace.md]     # paths from .claudestrator/; every agent reads them first, in this order
+~~~
+
+In the dashboard, Repos & checks → What every agent reads first → Create workspace map writes a skeleton and lists it; this skill fills it in. Refresh the map when a contract or the merge order changes: a stale one misleads every plan.
+
+## Checklist
+
+- Every repository under \`repos:\` is in the map, by its name, and nothing else is.
+- Every contract names its producer, its consumers and the path it is defined at, confirmed on both sides.
+- The merge order puts producers before consumers, and says what stays backward compatible meanwhile.
+- Guesses are marked as guesses; the user was told what you could not confirm.
+- \`context:\` in \`.claudestrator/config.yaml\` lists the map.
+`;
+
+/** How to set up config.yaml: repositories, checks an agent can read, the sandbox settings checks need, the rest. */
+const CONFIG_SKILL = `---
+name: claudestrator-config
+description: Sets up and tunes a project's Claudestrator config (.claudestrator/config.yaml), with its repositories, the checks (gates) that run after agents change them, the sandbox settings checks need, limits, groups and instructions. Use when asked to set up Claudestrator for a project, to add or fix its checks or gates, or when a check fails in Claudestrator but passes in a terminal.
+---
+
+# Claudestrator's config and checks
+
+Config comes in layers, each overriding the one before field by field: built-in defaults → libraries → \`~/.claudestrator/config.yaml\` (the user's, every project) → \`<workspace>/.claudestrator/config.yaml\` (the project's, committed for the team). Change the project's file unless the user wants a change for all of their projects. The dashboard edits the same file in place and reloads it when you save; it shows what it refuses as errors and what loosens the safety policy as warnings.
+
+## Work in this order
+
+1. Read the project's config, and the user's, before changing anything. Keep their comments, order and style; change only what was asked.
+2. For checks, read each repository's scripts (package.json, Makefile, Taskfile, pyproject.toml…) and its CI (\`.github/workflows\`, \`.gitlab-ci.yml\`): CI says what the team already checks, and how.
+3. Write the change, then go through the checklist at the end. Tell the user to press Run checks on Repos & checks: the checks run at once, in the sandbox, as they do after an agent.
+
+## Repositories
+
+~~~yaml
+repos:
+  api:                          # the name plans use: letters, digits, ".", "_" and "-"
+    path: services/api          # from the workspace folder; the name when left out
+    role: Public REST API of the web and mobile apps (NestJS, Postgres)   # one line, shown to agents beside the name
+    baseBranch: develop         # optional: else the top-level baseBranch
+    gates:
+      - { name: lint, cmd: npm run lint --silent }
+      - { name: types, cmd: npx tsc --noEmit }
+      - { name: test, cmd: npx vitest run --reporter=dot, when: src/ }
+      - { name: e2e, cmd: npm run e2e --silent, dir: packages/web, timeout: 2400 }
+  web:
+    path: apps/web
+    forge: gitlab               # only when origin's host does not say github, gitlab or bitbucket.org
+~~~
+
+## Checks (gates)
+
+They run after every code or tests step, in the repositories it changed, one after another; a repository with no changes is skipped. A red check sends its output back to the same agent, up to \`limits.gateAttempts\` times; then the user decides.
+
+- \`name\`: one per check in the repository. Its log file is named after it, so two names that differ only in case or punctuation collide.
+- \`cmd\`: a shell command, run from the repository's root (or \`dir\`); exit code 0 is green.
+- \`dir\`: a folder of the repository, from its root (\`packages/web\`); never absolute, \`~\` or \`..\`.
+- \`when\`: a folder or file from the repository's root (\`src/\`, \`package.json\`), no patterns: the check runs only when the change touches it.
+- \`timeout\`: seconds, 15 minutes when left out. A check that runs out of time goes to the user at once.
+
+Write each check for the agent that reads its failure:
+
+- The agent gets only the last 40 lines of a red check, about 6 KB in all, each long line cut. Make the failure the last thing it prints: quiet flags (\`--silent\`, \`-q\`), a \`dot\` reporter, no progress bars. The user's log keeps all of it.
+- Claudestrator sets \`CI=true\`, \`NO_COLOR=1\` and \`FORCE_COLOR=0\`, so test runners that watch by default run once.
+- Fast and deterministic: lint, typecheck, unit tests. Put a slow suite behind \`when\`, or leave it to CI.
+- The repository's own tools, through its own scripts; a check installs nothing.
+- Nothing that changes the repository: a formatter in its check mode (\`prettier --check\`, \`gofmt -l\`), never \`--write\`; no codegen into tracked files; no install that rewrites the lockfile.
+
+## The sandbox
+
+Checks run code the agents wrote, so they run in the agents' sandbox: writes only in the repository (never its \`.git\`) and in temp files; none of the user's credentials, credential files or credential-like variables; network only to the package registries, GitHub's download hosts and \`policy.network\`; no Docker. A check that passes in a terminal and fails in Claudestrator usually meets the sandbox, and the fix is a setting, never a change to the code:
+
+| What the check does | What it needs |
+|---|---|
+| writes a cache outside the repository (EPERM, read-only file system) | \`policy.writable: [~/.cache/go-build]\` |
+| reaches a host other than the registries (CONNECT tunnel failed, response 403) | \`policy.network: [npm.acme.corp]\` |
+| opens a local port, or reaches a service on 127.0.0.1 (listen EPERM on macOS) | \`policy.localPorts: true\` |
+| needs a variable that looks like a credential (a database URL with a password) | \`policy.checkEnv: [DATABASE_URL]\`, the variable exported in the login shell (\`~/.zprofile\`), and the editor restarted; a \`.env\` file is not read |
+| starts containers (Testcontainers, docker compose) | no setting: the user starts the services outside the sandbox on 127.0.0.1, then \`localPorts\` and \`checkEnv\` as above |
+
+\`policy.sandbox: false\` turns the sandbox off for agents, checks and git hooks: the last resort, and a warning for everyone who opens the project. Prefer the narrow setting.
+
+## The rest of the config
+
+~~~yaml
+baseBranch: main
+language: English               # of plans, reviews, questions and PR texts
+git: { mode: worktree }         # branch: tasks switch your clean checkouts, one at a time; worktree: a copy per task, tasks at once
+limits: { reviewRounds: 2, gateAttempts: 3, budgetUsd: 25, parallelTasks: 2 }   # budgetUsd 0: no limit
+context: [./workspace.md]       # files every agent reads first, from .claudestrator/ (the claudestrator-workspace-map skill writes it)
+jira: { allowedProjects: [PROJ] }
+intake: { model: haiku, effort: low }   # what reads a Jira or Linear ticket through MCP
+groups:                         # what a task can belong to, picked in the composer
+  checkout-revamp:
+    type: epic                  # epic | story | group
+    label: Checkout revamp
+    jira: PROJ-123
+    instructions: Refund endpoints live under /v2/refunds.   # every task in it follows them
+    baseBranch: feat/checkout   # its tasks start from it, and their PRs go into it
+instructions:                   # ticked per task in the composer; every agent of the task follows them
+  no-new-deps:
+    label: No new dependencies
+    text: Do not add packages; use what the repository already has.
+policy:
+  protectedBranches: [main, master]
+  draftPrsOnly: true
+  forbidAiAttribution: true
+~~~
+
+Agents, the delivery \`pipeline\` and scenarios take the shape the claudestrator-library skill describes; a project's config takes them too.
+
+Never put a secret in a config: the project's is committed. Never loosen the policy (the sandbox, \`network\`, \`writable\`, \`localPorts\`, \`checkEnv\`, \`protectedBranches\`, \`draftPrsOnly\`) without telling the user what it opens.
+
+## Checklist
+
+- The YAML parses; every repository name is letters, digits, \`.\`, \`_\` and \`-\`, and each \`path\` exists.
+- Every check has a unique \`name\` and a \`cmd\` the repository's own scripts run; it passes on the base branch as it is.
+- \`dir\` and \`when\` are paths from the repository's root, without \`..\` or patterns; \`timeout\` is in seconds.
+- Each check prints its failure last, without colour or progress.
+- Every policy setting you added is the narrowest that works, and the user knows why it is there.
+`;
+
 const SKILLS: readonly BundledSkill[] = [
   {
     name: 'claudestrator-library',
     label: 'Writing Claudestrator libraries',
     about: 'Claude Code writes library.yaml and its prompts for you: agents, scenarios with loops, branches and approvals, and what each output hands over. Ask it, e.g., "make a Claudestrator library for our release checklist".',
     files: { 'SKILL.md': LIBRARY_SKILL },
+  },
+  {
+    name: 'claudestrator-workspace-map',
+    label: 'Writing the workspace map',
+    about: 'Claude Code reads your repos and writes .claudestrator/workspace.md, which every agent reads first: what each repo is, the contracts between them, the merge order. Better maps, better plans.',
+    files: { 'SKILL.md': WORKSPACE_MAP_SKILL },
+  },
+  {
+    name: 'claudestrator-config',
+    label: 'Setting up config and checks',
+    about: 'Claude Code writes .claudestrator/config.yaml from your repos and their CI: the checks agents get back when they fail, quiet enough to read, and the sandbox setting a check needs when it passes in a terminal but not here.',
+    files: { 'SKILL.md': CONFIG_SKILL },
   },
 ];
 

@@ -402,12 +402,14 @@ test('rail: the workspace is named with a folder icon, or a repo icon when it is
 
 test('settings: the library skill is added for you, shows as added, and can be opened or removed', async () => {
   await b.eval(`(async () => { await window.CS.go({ name: 'settings' }); return true; })()`);
-  const place = (scope) => `document.querySelector('[data-action="skill-add"][data-scope="${scope}"], [data-action="skill-open"][data-scope="${scope}"]')?.closest('.skill-place')`;
+  const at = (scope) => `[data-name="claudestrator-library"][data-scope="${scope}"]`;
+  const place = (scope) => `document.querySelector('[data-action="skill-add"]${at(scope)}, [data-action="skill-open"]${at(scope)}')?.closest('.skill-place')`;
   await until(`!!${place('user')}`, 'the Skills section');
   assert.match(await textOf(`document.querySelector('#sec-skills')`), /Writing Claudestrator libraries/);
   assert.match(await textOf(place('user')), /For me .*Not added/);
   assert.match(await textOf(place('project')), /This project .*\.claude\/skills.*Not added/);
-  await b.eval(`document.querySelector('[data-action="skill-add"][data-scope="user"]').click(); true`);
+  assert.match(await textOf(`document.querySelector('#sec-skills')`), /Writing the workspace map.*Setting up config and checks/);
+  await b.eval(`document.querySelector('[data-action="skill-add"]${at('user')}').click(); true`);
   await until(`/Added/.test(${place('user')}.innerText)`, 'the skill added');
   assert.match(await textOf(place('user')), /Added Open Remove/);
   assert.match(await textOf(place('project')), /Not added/, 'the project has its own');

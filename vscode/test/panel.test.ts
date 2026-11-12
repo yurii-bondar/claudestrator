@@ -363,7 +363,7 @@ test("panel: a skill goes into the account's skills folder or the project's, and
   const account = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-acc-'));
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-ws-'));
   const p = integrationsPanel({ root: ws, accountChoice: () => ({ dir: account }) });
-  const states = async () => (await p.$skills()).map((k) => [k.user.state, k.project?.state]);
+  const states = async () => (await p.$skills()).filter((k) => k.name === 'claudestrator-library').map((k) => [k.user.state, k.project?.state]);
   assert.deepEqual(await states(), [['absent', 'absent']]);
 
   await p.$addSkill({ name: 'claudestrator-library', scope: 'user' });
