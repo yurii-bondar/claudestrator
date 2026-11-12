@@ -23,6 +23,7 @@ interface HomeView extends View {
   renderScenario(): void;
   renderAgentsChips(): void;
   /** The group and instructions menus, and the editor of the one being written. */
+  renderAwake(): void;
   renderExtras(): void;
   extraEditorHtml(): string;
   /** The instructions a group can tick, as toggles; `ticked` are on. */
@@ -160,6 +161,7 @@ interface Views {
     plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4',
     key: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zM15.5 7.5l3 3L22 7l-3-3',
     user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
+    coffee: 'M10 2v2M14 2v2M6 2v2M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM17 9h1a3 3 0 0 1 0 6h-1',
   };
   // The extension's mark (media/icon.svg): a burst over three branches, filled rather than stroked.
   const LOGO = `<svg class="ic logo-mark" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" aria-hidden="true"><path stroke="none" d="M12.83 7.60 L12.45 1.65 A0.45 0.45 0 0 0 11.55 1.65 L11.17 7.60Z M12.72 8.02 L14.72 3.78 A0.45 0.45 0 0 0 13.95 3.33 L11.28 7.18Z M12.42 8.32 L17.05 5.20 A0.45 0.45 0 0 0 16.60 4.43 L11.58 6.88Z M12.00 8.43 L16.54 8.05 A0.45 0.45 0 0 0 16.54 7.15 L12.00 6.77Z M11.58 8.32 L16.82 10.90 A0.45 0.45 0 0 0 17.27 10.12 L12.42 6.88Z M11.28 8.02 L14.01 11.98 A0.45 0.45 0 0 0 14.79 11.53 L12.72 7.18Z M11.17 7.60 L11.55 13.04 A0.45 0.45 0 0 0 12.45 13.04 L12.83 7.60Z M11.28 7.18 L9.28 11.42 A0.45 0.45 0 0 0 10.05 11.87 L12.72 8.02Z M11.58 6.88 L6.62 10.19 A0.45 0.45 0 0 0 7.07 10.96 L12.42 8.32Z M12.00 6.77 L7.39 7.15 A0.45 0.45 0 0 0 7.39 8.05 L12.00 8.43Z M12.42 6.88 L7.35 4.40 A0.45 0.45 0 0 0 6.90 5.17 L11.58 8.32Z M12.72 7.18 L10.02 3.27 A0.45 0.45 0 0 0 9.24 3.72 L11.28 8.02Z"/><circle stroke="none" cx="12" cy="7.6" r="1.92"/><path fill="none" stroke-width="1.5" stroke-linecap="round" d="M12 14.6 L5.6 19.1 M12 14.6 L12 19.6 M12 14.6 L18.4 19.1"/><circle stroke="none" cx="4.6" cy="19.9" r="1.6"/><circle stroke="none" cx="12" cy="20.9" r="1.6"/><circle stroke="none" cx="19.4" cy="19.9" r="1.6"/></svg>`;
@@ -291,7 +293,7 @@ interface Views {
   const S: AppState = {
     route: saved.route || { name: 'home' },
     overview: null,
-    draft: { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], ...(saved.draft || {}) },
+    draft: { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null, ...(saved.draft || {}) },
     ui: saved.ui || {},
   };
   /** The config when it is valid; the dashboard offers nothing to change in a broken one. */
@@ -644,6 +646,58 @@ interface Views {
     });
     return tabs.length ? `<nav class="task-tabs" aria-label="Task tabs">${tabs.join('')}</nav>` : '';
   }
+
+  // ---------- keeping the computer awake ----------
+
+  const AWAKE_HOURS = [1, 2, 4, 8];
+  /** At most a week, as the host takes it. */
+  const AWAKE_MAX_MINUTES = 7 * 24 * 60;
+  const awakeSpan = (minutes: number) => (minutes < 60 ? `${minutes} min` : `${Number((minutes / 60).toFixed(1))} h`);
+
+  /**
+   * The menu that keeps the computer awake while a task runs: off, as long as it runs (until you are back), or at most
+   * some hours. `scope` names its actions: `draft` for the composer, `task` for the task on screen, where `until` (ms)
+   * says how long it has left. Its tooltip names the tool each system uses and whether this one has it; the menu offers
+   * to install a missing one.
+   */
+  function awakeMenu({ scope, choice, until }: { scope: 'draft' | 'task'; choice: AwakeChoice | null; until?: number | null }) {
+    const tool = S.overview && S.overview.awake;
+    const usable = Boolean(tool && tool.name);
+    const ready = Boolean(tool && tool.path);
+    const label = !choice ? 'Stay awake' : choice.minutes === null ? 'Awake while it runs' : typeof until === 'number' ? `Awake · ${resetIn(until / 1000)} left` : `Awake · ${awakeSpan(choice.minutes)}`;
+    const here = !tool ? 'Looking for the tool…' : `Here: ${tool.about}${ready ? ' (installed)' : ''}`;
+    const tip = `Keep the computer awake while this task runs, so its agents go on while you are away.\nmacOS: caffeinate (built in) · Linux: systemd-inhibit (part of systemd)\n${here}`;
+    const item = (minutes: number | null | 'off', text: string, hint = '') => {
+      const on = minutes === 'off' ? !choice : choice !== null && choice.minutes === minutes;
+      return `<button role="menuitemradio" aria-checked="${on}" data-action="${scope}-awake" data-minutes="${minutes === null ? 'run' : minutes}" ${usable || minutes === 'off' ? '' : 'disabled'}>${on ? icon('check') : '<span class="ic"></span>'}<span class="acc-row"><b>${text}</b>${hint ? `<span class="muted small">${hint}</span>` : ''}</span></button>`;
+    };
+    const custom = choice && choice.minutes !== null && !AWAKE_HOURS.includes(choice.minutes / 60) && until === undefined ? Number((choice.minutes / 60).toFixed(2)) : '';
+    const status = !tool
+      ? `<div class="menu-note awake-tool"><span class="spinner xs"></span><span>Looking for the tool…</span></div>`
+      : `<div class="menu-note awake-tool ${ready ? 'ok' : 'bad'}">${icon(ready ? 'check' : 'alert')}<span class="acc-row"><span>${esc(tool.about)}${ready ? ': installed' : ''}</span>${tool.install ? `<code>${esc(tool.install)}</code>` : ''}</span>
+          ${tool.install ? `<button class="btn sm" data-action="awake-install" title="Opens a terminal with this command; it asks for your password">${icon('download')}Install…</button>` : ''}
+          ${tool.name && !ready ? `<button class="btn ghost sm" data-action="awake-check">${icon('refresh')}Check again</button>` : ''}</div>`;
+    return `<span class="menu-wrap awake-wrap">
+      <button class="sc-current awake-btn ${choice ? 'picked' : ''} ${choice && !ready ? 'bad' : ''}" data-action="eff-menu" aria-haspopup="menu" title="${esc(tip)}">${icon(choice && !ready ? 'alert' : 'coffee')}${esc(label)}<span class="sc-caret">▾</span></button>
+      <div class="menu awake-menu" role="menu">
+        <div class="menu-title">Keep the computer awake while the task runs</div>
+        ${item('off', 'Off', 'the computer sleeps as usual')}
+        ${item(null, 'As long as it runs', 'no time limit: until it finishes or waits for you')}
+        ${AWAKE_HOURS.map((h) => item(h * 60, `At most ${h} h`)).join('')}
+        <label class="awake-custom">For <input type="number" class="input sm" min="0.5" max="168" step="0.5" placeholder="hours" value="${custom}" data-change="${scope}-awake-hours" aria-label="Hours to keep the computer awake" ${usable ? '' : 'disabled'}> hours</label>
+        ${status}
+        <div class="menu-note muted small">${icon('info')}<span>The display may still sleep, and closing a laptop's lid still puts it to sleep.</span></div>
+      </div>
+    </span>`;
+  }
+
+  /** What a pick in the menu means: `off`, `run` (no limit) or minutes. */
+  const awakePick = (v: string | undefined): AwakeChoice | null => (v === 'run' ? { minutes: null } : v && Number(v) > 0 ? { minutes: Math.min(Number(v), AWAKE_MAX_MINUTES) } : null);
+  /** Hours typed in the menu, as a choice; null for none or nonsense. */
+  const awakeHours = (v: string): AwakeChoice | null => {
+    const minutes = Math.round(Number(v) * 60);
+    return Number.isFinite(minutes) && minutes >= 1 ? { minutes: Math.min(minutes, AWAKE_MAX_MINUTES) } : null;
+  };
 
   /** An account's key, as the start screen's tiles and the aliases know it: its email, lowercase, or its folder. */
   const accountKey = (a: { email?: string | undefined; dir: string }) => (a.email ? a.email.toLowerCase() : `dir:${a.dir}`);
@@ -1170,6 +1224,7 @@ interface Views {
           <div class="scenarios" data-region="scenarios"></div>
           <div class="composer-extras" data-region="extras"></div>
           <div class="composer-actions">
+            <span data-region="awake"></span>
             <span data-region="auto-switch"></span>
             <button class="btn primary" data-action="start" id="start-btn" ${disabled ? 'disabled' : ''}>${icon('play')}<span data-region="start-label">Start</span><kbd>⌘↵</kbd></button>
           </div>
@@ -1187,6 +1242,7 @@ interface Views {
         </details>`;
       this.renderAgentsChips();
       this.renderExtras();
+      this.renderAwake();
       autosize($('#composer-text'));
     },
     /** The scenario the task will run: your pick (while it exists), else what the words suggest (from the last preview). */
@@ -1267,6 +1323,9 @@ interface Views {
           })
           .join('')}`
       );
+    },
+    renderAwake() {
+      patch('awake', awakeMenu({ scope: 'draft', choice: S.draft.awake }));
     },
     renderExtras() {
       const c = okConfig();
@@ -1423,14 +1482,14 @@ interface Views {
       const instructions = S.draft.instructions.filter((id) => c && c.instructions.some((x) => x.id === id));
       let r: Awaited<ReturnType<typeof attempt<'start'>>>;
       try {
-        r = await attempt('start', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: this.scenario(), group, instructions });
+        r = await attempt('start', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: this.scenario(), group, instructions, ...(S.draft.awake && { awake: S.draft.awake }) });
       } finally {
         this.starting = false;
         btn.disabled = false;
         btn.classList.remove('busy');
       }
       if (!r) return;
-      S.draft = { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [] };
+      S.draft = { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null };
       this.detected = null;
       persist();
       toast(r.created ? `Started ${r.taskId}` : `Continuing ${r.taskId}`, 'ok');
@@ -1759,6 +1818,25 @@ interface Views {
       go({ name: 'task', taskId: el.dataset.id, ...(inTab && { tab: true }) });
     },
     'close-tab': (el) => closeTab(el.dataset.id ?? ''),
+    'draft-awake': (el) => {
+      closeMenus();
+      S.draft.awake = awakePick(el.dataset.minutes);
+      persist();
+      views.home.renderAwake();
+    },
+    'awake-install': async () => {
+      closeMenus();
+      if (await attempt('installAwake')) toast('Run the command in the terminal; the tool is looked for again when you close it', 'info');
+    },
+    'awake-check': async () => {
+      const tool = await attempt('checkAwake');
+      if (!tool) return;
+      if (S.overview) S.overview.awake = tool;
+      toast(tool.path ? `${tool.name} is installed` : `${tool.name} is still not found`, tool.path ? 'ok' : 'warn');
+      await loadOverview();
+      if (current && current.refresh) await current.refresh();
+      else if (S.route.name === 'home') views.home.renderAwake();
+    },
     run: async (el) => {
       await attempt('run', { taskId: el.dataset.id || S.route.taskId || '' });
     },
@@ -2150,6 +2228,14 @@ interface Views {
   };
 
   const changes: Record<string, FieldFn> = {
+    'draft-awake-hours': (el) => {
+      const choice = awakeHours(el.value);
+      if (!choice) return;
+      S.draft.awake = choice;
+      persist();
+      closeMenus();
+      views.home.renderAwake();
+    },
     'extra-type': (el) => {
       if (S.ui.extraEdit) S.ui.extraEdit = { ...S.ui.extraEdit, type: asGroupType(el.value) };
       persist();
@@ -2376,7 +2462,7 @@ interface Views {
   // Live durations ("2m 13s") tick without re-rendering anything else.
   setInterval(() => tick(), 1000);
 
-  window.CS = { vscode, LOGO, accountKey, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, actions, changes, inputs,
+  window.CS = { vscode, LOGO, accountKey, call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, fmtTokens, resetIn, meter, level, EFFORT_LABEL, effortTag, size, plural, warnTip, stepName, OUTPUT_INFO, SCENARIO_INFO, scInfo, modelChoices, scenarioChip, groupChip, sevCounts, agentColor, S, views, pipeRowHtml, libraryBlock, libraryMove, pipeEditors, pipeDragging: () => Boolean(pipeDrag), go, patch, debounce, persist, statusBadge, miniSteps, sourceChip, outlineHtml, permissionCard, loadOverview, autosize, shake, refreshSoon, awakeMenu, awakePick, awakeHours, closeMenus, actions, changes, inputs,
     // Called by the last script to load (config.js) once every view is registered.
     boot: async () => {
       renderShell();

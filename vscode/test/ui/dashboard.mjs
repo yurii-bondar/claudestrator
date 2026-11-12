@@ -357,3 +357,30 @@ test('integrations: a hidden MCP server leaves the list for a folded one, and Sh
   await until(`!document.querySelector('.mcp-hidden-fold')`, 'jenkins back');
   assert.deepEqual(await shown(), ['asana', 'jenkins', 'atlassian']);
 });
+
+test('composer: Stay awake names the tool of each system and whether this one has it, offers to install it, and takes hours', async () => {
+  const menu = `document.querySelector('[data-region="awake"]')`;
+  // Linux without systemd-inhibit: the menu says so and offers the command that installs it.
+  await b.eval(`(async () => { window.__overview = { awake: { name: 'systemd-inhibit', path: null, install: 'sudo apt-get install -y systemd', about: 'systemd-inhibit (part of systemd) is not installed' } }; window.CS.S.draft.awake = null; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.awake-btn')`, 'the Stay awake button');
+  const tip = await b.eval(`document.querySelector('.awake-btn').title`);
+  assert.match(tip, /macOS: caffeinate \(built in\) · Linux: systemd-inhibit \(part of systemd\)/);
+  assert.match(tip, /Here: systemd-inhibit \(part of systemd\) is not installed/);
+  assert.match(await textOf(`${menu}.querySelector('.awake-tool')`), /not installed\s*sudo apt-get install -y systemd\s*Install…\s*Check again/);
+
+  await b.eval(`document.querySelector('.awake-btn').click(); document.querySelector('[data-action="draft-awake"][data-minutes="120"]').click(); true`);
+  assert.deepEqual(await b.eval(`window.CS.S.draft.awake`), { minutes: 120 });
+  assert.match(await textOf(`document.querySelector('.awake-btn')`), /Awake · 2 h/);
+  assert.equal(await b.eval(`document.querySelector('.awake-btn').classList.contains('bad')`), true, 'chosen without the tool: a warning');
+
+  await b.eval(`(() => { const i = document.querySelector('[data-change="draft-awake-hours"]'); i.value = '1.5'; i.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  assert.deepEqual(await b.eval(`window.CS.S.draft.awake`), { minutes: 90 });
+  await b.eval(`document.querySelector('[data-action="draft-awake"][data-minutes="run"]').click(); true`);
+  assert.match(await textOf(`document.querySelector('.awake-btn')`), /Awake while it runs/);
+  await b.eval(`document.querySelector('[data-action="draft-awake"][data-minutes="off"]').click(); true`);
+  assert.equal(await b.eval(`window.CS.S.draft.awake`), null);
+
+  // This machine's own tool, as the host found it.
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); window.CS.views.home.renderAwake(); return true; })()`);
+  if (process.platform === 'darwin') assert.match(await textOf(`${menu}.querySelector('.awake-tool')`), /caffeinate, built into macOS: installed/);
+});

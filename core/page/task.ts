@@ -15,7 +15,7 @@ interface Views {
 }
 
 (function () {
-  const { call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, size, plural, stepName, agentColor, S, views, go, patch, persist, statusBadge, sourceChip, permissionCard, autosize, shake, fmtTokens, meter, level, effortTag, scenarioChip, groupChip, sevCounts, SCENARIO_INFO, pipeRowHtml, pipeEditors, pipeDragging, modelChoices, EFFORT_LABEL } = window.CS;
+  const { call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, size, plural, stepName, agentColor, S, views, go, patch, persist, statusBadge, sourceChip, permissionCard, autosize, shake, fmtTokens, meter, level, effortTag, scenarioChip, groupChip, sevCounts, SCENARIO_INFO, pipeRowHtml, pipeEditors, pipeDragging, modelChoices, EFFORT_LABEL, awakeMenu, awakePick, awakeHours, closeMenus } = window.CS;
 
   type ReadinessResult = Extract<TaskResult, { kind: 'readiness' }>;
   type AuditResult = Extract<TaskResult, { kind: 'audit' }>;
@@ -388,6 +388,10 @@ interface Views {
       }
     },
     actions: {
+      'task-awake': async (el) => {
+        closeMenus();
+        if (await attempt('setAwake', { taskId: T.taskId, awake: awakePick(el.dataset.minutes) })) await views.task.load(false);
+      },
       'select-step': (el) => {
         const key = el.dataset.key;
         if (!key) return;
@@ -503,6 +507,12 @@ interface Views {
       },
     },
     changes: {
+      'task-awake-hours': async (el) => {
+        const awake = awakeHours(el.value);
+        if (!awake) return;
+        closeMenus();
+        if (await attempt('setAwake', { taskId: T.taskId, awake })) await views.task.load(false);
+      },
       'fix-model': (el) => {
         S.ui.fixModel = el.value;
         persist();
@@ -572,6 +582,7 @@ interface Views {
         </div>
       </div>
       <div class="th-actions">
+        ${d.status.group !== 'done' ? awakeMenu({ scope: 'task', choice: d.awake && { minutes: d.awake.until === null ? null : Math.max(1, Math.round((d.awake.until - Date.now()) / 60000)) }, until: d.awake ? d.awake.until : null }) : ''}
         ${canResume ? `<button class="btn primary" data-action="run">${icon('play')}${k === 'failed' ? 'Retry' : 'Resume'}</button>` : ''}
         ${k === 'running' ? `<button class="btn" data-action="stop">${icon('stop')}Stop</button>` : ''}
         ${Object.keys(d.prs || {}).length ? Object.entries(d.prs).map(([r, u]) => `<button class="btn" data-action="open-url" data-url="${esc(u)}">${icon('pr')}${esc(r)} PR</button>`).join('') : ''}

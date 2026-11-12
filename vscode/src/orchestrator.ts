@@ -14,13 +14,15 @@ import { exec } from '../../core/src/git';
 import { AtlassianClient } from '../../core/src/intake';
 import { BitbucketClient } from '../../core/src/bitbucket';
 import * as os from 'os';
-import { probe, expand, accountLabel, statuslineSnapshot, claudeAccounts } from '../../core/src/env';
+import { probe, expand, accountLabel, statuslineSnapshot, claudeAccounts, which } from '../../core/src/env';
+import { findAwakeTool, awakeArgs, KeepAwake, type Held } from '../../core/src/awake';
+import { spawn } from 'child_process';
 import { projectConfigFile, loadConfig, type ResolveResult } from '../../core/src/config';
 import type { Defaults } from '../../core/src/defaults';
 import type { Probe, StatuslineSnapshot } from '../../core/src/env';
 import type { TaskEntry } from '../../core/src/view';
 import type { Diagnostic } from '../../core/src/types';
-import type { Account, AccountEntry, EngineEvent, LimitWindow, StoredLimits, PermissionRequest } from '../../core/src/wire';
+import type { Account, AccountEntry, AwakeTool, EngineEvent, LimitWindow, StoredLimits, PermissionRequest } from '../../core/src/wire';
 
 /** Which account the agents use and why: from settings and the environment, without reading a file. */
 type AccountChoice = Pick<Account, 'dir' | 'shownDir' | 'label' | 'source' | 'sourceText'>;
@@ -114,6 +116,18 @@ class Orchestrator {
   checking: Promise<Health> | null = null;
   resolving: { key: string; run: Promise<Defaults | null | undefined> } | null = null;
   fireTimer: NodeJS.Timeout | null | undefined;
+  /** What keeps the computer awake here, once looked for (with the health checks). */
+  awakeTool: AwakeTool | null = null;
+  /** The tasks that keep the computer awake while they run. */
+  keepAwake = new KeepAwake({
+    start: () => this.holdAwake(),
+    running: (taskId) => this.engines().some((e) => e.isRunning(taskId)),
+    now: () => Date.now(),
+    later: (fn, ms) => {
+      const t = setTimeout(fn, ms);
+      return () => clearTimeout(t);
+    },
+  });
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -179,11 +193,46 @@ class Orchestrator {
       this.refreshDefaults(true);
       this.refreshAuth();
       if (!this.mcp.checkedAt) void this.refreshMcp();
+      await this.checkAwake();
     } catch (e) {
       this.health = { error: (e as Error).message, claude: { ok: false, error: (e as Error).message }, git: {}, gh: {}, glab: {} };
     }
     this.fire();
     return this.health;
+  }
+
+  /** Looks for the tool that keeps the computer awake, on the PATH a terminal has. */
+  async checkAwake(): Promise<AwakeTool> {
+    const PATH = (this.health && this.health.PATH) || getChildEnv().PATH;
+    this.awakeTool = await findAwakeTool({ platform: process.platform, which: (cmd) => which(cmd, PATH) });
+    this.fire();
+    return this.awakeTool;
+  }
+
+  /** Starts the tool, which ends with this process; null when there is none (a task's choice then holds nothing). */
+  private holdAwake(): Held | null {
+    const tool = this.awakeTool;
+    if (!tool || !tool.name || !tool.path) return null;
+    const child = spawn(tool.path, awakeArgs(tool.name, process.pid), { stdio: 'ignore' });
+    child.on('error', (e) => this._onEngine.fire({ name: 'log', data: { level: 'warn', message: `${tool.name} did not start, so the computer may sleep: ${e.message}` } }));
+    return { kill: () => void child.kill(), onExit: (fn) => void child.once('exit', fn).once('error', fn) };
+  }
+
+  /**
+   * Opens a terminal with the command that installs the tool (Linux), for you to run: it asks for your password. The
+   * tool is looked for again when the terminal closes.
+   */
+  installAwake(): void {
+    const command = this.awakeTool && this.awakeTool.install;
+    if (!command) throw new Error('There is nothing to install here');
+    const terminal = vscode.window.createTerminal({ name: 'Install systemd-inhibit', iconPath: new vscode.ThemeIcon('coffee') });
+    terminal.show();
+    terminal.sendText(command);
+    const sub = vscode.window.onDidCloseTerminal((t) => {
+      if (t !== terminal) return;
+      sub.dispose();
+      void this.checkAwake();
+    });
   }
 
   /** The health checks, run the first time they are needed (a task, the dashboard, a command) and then kept. */
@@ -249,6 +298,9 @@ class Orchestrator {
         // What an agent is doing now goes to the page and the tree as it is (`live`); reading every task again is for
         // what changes them.
         if (['changed', 'permission', 'permissionDone', 'limits'].includes(name)) this.fire();
+        // A task that starts or stops running holds the computer awake or lets it go; a finished one is done with it.
+        if (name === 'finished') this.keepAwake.drop((data as { taskId: string }).taskId);
+        else if (name === 'changed') this.keepAwake.sync();
       });
     }
     this.watch(root);
@@ -755,6 +807,7 @@ class Orchestrator {
   }
 
   dispose(): void {
+    this.keepAwake.dispose();
     if (this.configSub) this.configSub.dispose();
     this.disposeWatchers();
     this.hooks.dispose();

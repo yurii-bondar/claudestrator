@@ -1040,6 +1040,21 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .sc-current { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 12px; border-radius: var(--cs-radius-lg); border: 1px solid var(--cs-border-strong); background: var(--cs-bg-app); color: var(--cs-text-primary); font: inherit; font-size: var(--cs-font-sm); font-weight: var(--cs-weight-strong); cursor: pointer; white-space: nowrap; }
 .sc-current:hover { border-color: var(--cs-border-focus); }
 .sc-current .ic { width: 13px; height: 13px; }
+/* Keeping the computer awake while a task runs: the composer's and the task screen's menu. */
+.awake-btn.picked { border-color: var(--cs-status-run-border); color: var(--cs-status-run-text); }
+.awake-btn.bad { border-color: var(--cs-status-warn-border); color: var(--cs-status-warn-text); }
+.awake-menu { min-width: 320px; max-width: 380px; }
+.awake-menu .menu-title { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); padding: 4px 10px 6px; }
+.awake-custom { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 36px; font-size: var(--cs-font-sm); }
+.awake-custom .input { width: 80px; }
+.awake-tool { flex-wrap: wrap; font-size: var(--cs-font-sm); }
+.awake-tool .acc-row { flex: 1 1 calc(100% - 24px); min-width: 0; }
+.awake-tool .btn:first-of-type { margin-left: 20px; }
+.awake-tool code { align-self: flex-start; margin-top: 4px; font-size: var(--cs-font-xs); white-space: nowrap; }
+.awake-tool.ok > .ic { color: var(--cs-status-ok-text); }
+.awake-tool.bad > .ic { color: var(--cs-status-warn-text); }
+.awake-tool .btn { width: auto; }
+.menu-note.muted .ic { flex: none; }
 .sc-caret { color: var(--cs-text-secondary); font-size: var(--cs-font-xs); }
 .sc-menu { width: 380px; max-width: calc(100vw - 40px); padding: 4px; }
 .sc-item { display: flex; align-items: stretch; gap: 2px; border-radius: var(--cs-radius-md); }

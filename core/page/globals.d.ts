@@ -15,6 +15,8 @@ type Live = import('../src/wire').Live;
 type TaskSource = import('../src/wire').TaskSource;
 type PermissionRequest = import('../src/wire').PermissionRequest;
 type Card = import('../src/wire').Card;
+type AwakeTool = import('../src/wire').AwakeTool;
+type AwakeChoice = import('../src/wire').AwakeChoice;
 type TaskSection = import('../src/wire').TaskSection;
 type AgentSummary = import('../src/wire').AgentSummary;
 type ConfigSummary = import('../src/wire').ConfigSummary;
@@ -100,6 +102,8 @@ interface Draft {
   group: string;
   /** The ids of the instructions the task's agents follow. */
   instructions: string[];
+  /** Whether the task keeps the computer awake while it runs, and how long at most. */
+  awake: AwakeChoice | null;
 }
 
 /** The group or instruction being written in the composer; without `id` it is a new one. */
@@ -297,6 +301,13 @@ interface CSApi {
   autosize(ta: HTMLElement | null): void;
   shake(el: HTMLElement | null): void;
   refreshSoon(): void;
+  /** The menu that keeps the computer awake while a task runs; its actions are `<scope>-awake` and `<scope>-awake-hours`. */
+  awakeMenu(opts: { scope: 'draft' | 'task'; choice: AwakeChoice | null; until?: number | null }): string;
+  /** A pick of that menu (`off`, `run` or minutes) as a choice. */
+  awakePick(v: string | undefined): AwakeChoice | null;
+  /** Hours typed in that menu as a choice; null for none or nonsense. */
+  awakeHours(v: string): AwakeChoice | null;
+  closeMenus(): void;
   actions: Record<string, ActionFn>;
   changes: Record<string, FieldFn>;
   inputs: Record<string, FieldFn>;

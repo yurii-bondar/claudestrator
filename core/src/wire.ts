@@ -470,7 +470,28 @@ export type TaskScreen = TaskDetail & {
   pipelineEdit: PipelineEdit | null;
   /** The pipeline as its diagram draws it: where each step is, the branch taken, the round of the loop. */
   flow: FlowItem[];
+  /** Whether it keeps the computer awake while it runs: until when (ms), or null for as long as it runs. */
+  awake: { until: number | null } | null;
 };
+
+// ---------- keeping the computer awake ----------
+
+/** What keeps the computer awake on this machine (core/src/awake.ts). */
+export interface AwakeTool {
+  /** caffeinate on macOS, systemd-inhibit on Linux; null where neither applies (Windows). */
+  name: 'caffeinate' | 'systemd-inhibit' | null;
+  /** Where it was found; null when it is not installed. */
+  path: string | null;
+  /** What installs it, typed into a terminal (Linux, when it is missing). */
+  install: string | null;
+  /** The tool in a line: what it is, or why it is missing. */
+  about: string;
+}
+
+/** How long a task keeps the computer awake: at most `minutes` while it runs, or as long as it runs (null). */
+export interface AwakeChoice {
+  minutes: number | null;
+}
 
 export interface CommentResult {
   ok: boolean;
@@ -663,6 +684,8 @@ export interface Overview {
   /** The short names given to accounts on the start screen, by its tiles' key (the email, lowercase, or `dir:<folder>`). */
   accountAliases: Record<string, string>;
   mcp: McpSummary;
+  /** What keeps the computer awake here; null until it has been looked for. */
+  awake: AwakeTool | null;
   defaults: DefaultsView | null;
   permissions: PermissionRequest[];
   /** Languages offered for plans, reports and PR texts. */
@@ -941,7 +964,14 @@ export interface Rpc {
   openExternal: { params: { url: string }; result: Void };
   copy: { params: { text: string }; result: Void };
   preview: { params: ComposerArgs; result: Preview };
-  start: { params: ComposerArgs; result: { taskId: string; created: boolean } };
+  /** `awake`: the task keeps the computer awake while it runs. */
+  start: { params: ComposerArgs & { awake?: AwakeChoice }; result: { taskId: string; created: boolean } };
+  /** Keeps the computer awake while the task runs, or stops (null). */
+  setAwake: { params: { taskId: string; awake: AwakeChoice | null }; result: Void };
+  /** Looks for the tool again (after installing it). */
+  checkAwake: { params: void; result: AwakeTool };
+  /** Opens a terminal with the command that installs the tool, for you to run. */
+  installAwake: { params: void; result: Void };
   saveScenario: { params: SaveScenarioParams; result: { id: string } };
   deleteScenario: { params: { id: string }; result: { deleted: boolean } };
   restoreScenario: { params: { id: string }; result: Void };

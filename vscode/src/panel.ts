@@ -315,6 +315,7 @@ class DashboardPanel implements RpcHandlers {
       accounts: await this.orch.accounts(),
       accountAliases: this.accountAliases(),
       mcp: summarizeMcp({ servers: this.orch.mcp.servers, hidden: this.mcpHidden(), checking: this.orch.mcp.checking }),
+      awake: this.orch.awakeTool,
       defaults: this.orch.defaults ? { models: this.orch.defaults.models, byModel: this.orch.defaults.byModel } : null,
       permissions: this.orch.pendingPermissions(),
     };
@@ -333,7 +334,7 @@ class DashboardPanel implements RpcHandlers {
     return r.ok && !r.empty ? { ...r, outline: outline(r.pipeline, { pr: r.source.kind === 'pr' }) } : r;
   }
 
-  async $start(p: ComposerArgs) {
+  async $start({ awake, ...p }: Rpc['start']['params']) {
     await this.orch.ensureReady();
     if (!(this.orch.health && this.orch.health.claude.ok)) {
       const problem = (this.orch.health && this.orch.health.claude.error) || 'Claude Code CLI was not found';
@@ -342,7 +343,21 @@ class DashboardPanel implements RpcHandlers {
     }
     const r = await this.engine.start(p);
     this.engine.launch(r.taskId);
+    if (awake) this.orch.keepAwake.want(r.taskId, awake.minutes);
     return r;
+  }
+
+  async $setAwake({ taskId, awake }: Rpc['setAwake']['params']) {
+    if (awake) this.orch.keepAwake.want(taskId, awake.minutes);
+    else this.orch.keepAwake.drop(taskId);
+  }
+
+  async $checkAwake() {
+    return this.orch.checkAwake();
+  }
+
+  async $installAwake() {
+    this.orch.installAwake();
   }
 
   async $task({ taskId }: { taskId: string }): Promise<TaskScreen> {
@@ -360,6 +375,7 @@ class DashboardPanel implements RpcHandlers {
       ticket: await engine.svc.readArtifact(taskId, 'ticket.md'),
       pipelineEdit: await this.pipelineEdit(state),
       flow: flowOf(state),
+      awake: this.orch.keepAwake.of(taskId),
     };
   }
 

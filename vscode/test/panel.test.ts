@@ -221,7 +221,7 @@ test('panel: the task screen says where its failure has a Fix in chat', async ()
     svc: { exists: async () => true, state: async () => ({ checkpoint, pipeline: { stages: [], reviewLoop: null } }), readArtifact: async () => '' },
     checkpointContext: async () => ({ format: 'log', text: 'lint: 1 error' }),
   };
-  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, { orch: { engine }, pipelineEdit: async () => null });
+  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, { orch: { engine, keepAwake: { of: () => null } }, pipelineEdit: async () => null });
   try {
     assert.equal((await p.$task({ taskId: 'T-1' })).fix, 'checkpoint');
     checkpoint = { id: 'approve-plan', at: 'now' };
@@ -345,6 +345,18 @@ test('panel: the MCP servers you hide are kept on this machine and left out of t
 
   stored.set('claudestrator.mcpHidden', ['jenkins', 7, null]);
   assert.deepEqual(p.mcpHidden(), ['jenkins'], 'what storage holds is narrowed');
+});
+
+test('panel: a task started to keep the computer awake does so, and the choice can change or stop', async () => {
+  const calls: unknown[][] = [];
+  const keepAwake = { want: (...a: unknown[]) => void calls.push(['want', ...a]), drop: (...a: unknown[]) => void calls.push(['drop', ...a]) };
+  const engine = { start: async () => ({ taskId: 'T-1', created: true }), launch: () => {} };
+  const p = integrationsPanel({ engine, keepAwake, health: { claude: { ok: true } } });
+  await p.$start({ text: 'fix it', awake: { minutes: 120 } });
+  await p.$start({ text: 'and this' });
+  await p.$setAwake({ taskId: 'T-1', awake: { minutes: null } });
+  await p.$setAwake({ taskId: 'T-1', awake: null });
+  assert.deepEqual(calls, [['want', 'T-1', 120], ['want', 'T-1', null], ['drop', 'T-1']], 'a task started without it keeps nothing awake');
 });
 
 test('panel: Bitbucket is saved trimmed, and tested only once it can be', async () => {
