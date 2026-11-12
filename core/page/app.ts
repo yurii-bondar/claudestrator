@@ -546,12 +546,15 @@ interface Views {
    */
   const taskMenu = (t: Card) => esc(JSON.stringify({ webviewSection: 'task', taskId: t.taskId, taskStatus: t.status.key, taskResumable: t.status.resumable, preventDefaultContextMenuItems: true }));
 
+  /** The key a click is held with to open a task in a tab: ⌘ on a Mac, Ctrl elsewhere. */
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+
   /** A task in the rail's tree: its status icon, its title, and what it is at in a word or a time. */
   function treeTask(t: Card) {
     const on = S.route.name === 'task' && S.route.taskId === t.taskId;
     const since = t.status.key === 'running' && t.live && t.live.since;
     const hint = since ? `<span data-since="${since}"></span>` : t.status.group === 'done' ? esc(ago(t.updatedAt)) : t.status.group === 'attention' ? esc((t.checkpoint && CHECKPOINT_WORD[t.checkpoint.id]) || t.status.label) : '';
-    return `<button class="tree-task tone-${t.status.tone} ${on ? 'active' : ''}" data-action="open-task" data-id="${esc(t.taskId)}" data-vscode-context="${taskMenu(t)}" title="${esc(`${t.title} · ${t.taskId} · ${t.status.label}`)}"${on ? ' aria-current="page"' : ''}>${icon(statusIcon(t))}<span class="tt-title">${esc(t.title)}</span>${hint ? `<span class="tt-hint">${hint}</span>` : ''}</button>`;
+    return `<button class="tree-task tone-${t.status.tone} ${on ? 'active' : ''}" data-action="open-task" data-id="${esc(t.taskId)}" data-vscode-context="${taskMenu(t)}" title="${esc(`${t.title} · ${t.taskId} · ${t.status.label}\n${MOD}-click: open in a tab`)}"${on ? ' aria-current="page"' : ''}>${icon(statusIcon(t))}<span class="tt-title">${esc(t.title)}</span>${hint ? `<span class="tt-hint">${hint}</span>` : ''}</button>`;
   }
 
   /**
@@ -1750,7 +1753,9 @@ interface Views {
       const inner = e.target instanceof Element ? e.target.closest('a, button') : null;
       if (inner && inner !== el) return;
       setNavOpen(false);
-      go({ name: 'task', taskId: el.dataset.id });
+      // ⌘-click (Ctrl elsewhere) opens it in a tab, as a browser opens a link: in every host, menu or not.
+      const inTab = e instanceof MouseEvent && (e.metaKey || e.ctrlKey);
+      go({ name: 'task', taskId: el.dataset.id, ...(inTab && { tab: true }) });
     },
     'close-tab': (el) => closeTab(el.dataset.id ?? ''),
     run: async (el) => {
