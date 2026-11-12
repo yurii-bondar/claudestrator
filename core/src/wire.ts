@@ -188,6 +188,8 @@ export interface McpData {
   checking: boolean;
   checkedAt: string | null;
   error: string | null;
+  /** The servers you hid: listed apart, and left out of every count and warning. */
+  hidden: string[];
   /** Missing while the machine check has not finished. */
   account: Account | undefined;
 }
@@ -913,6 +915,8 @@ export interface Rpc {
   testBitbucket: { params: void; result: AtlassianUser };
   mcp: { params: { refresh?: boolean }; result: McpData };
   mcpLogin: { params: { name: string }; result: Void };
+  /** Hides a server from the counts and warnings, or shows it again; kept on this machine. */
+  setMcpHidden: { params: { name: string; hidden: boolean }; result: Void };
   mcpShowLogin: { params: { name: string }; result: Void };
   mcpCancelLogin: { params: { name: string }; result: Void };
   mcpDetails: { params: { name: string }; result: string };

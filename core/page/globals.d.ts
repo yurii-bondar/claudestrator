@@ -132,6 +132,8 @@ interface UiState {
   treeOpen?: Record<string, boolean>;
   /** Sections whose finished tasks are listed, not folded into one row. */
   treeDone?: Record<string, boolean>;
+  /** The Integrations page lists the MCP servers you hid. */
+  mcpHiddenOpen?: boolean;
   /** What the rail's tree is filtered by. */
   treeFilter?: string;
   /** The tasks with a tab over the screen, in the order they got one. */

@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as view from '../../core/src/view';
 import type { OutputPush } from '../../core/src/view';
 import { exists } from '../../core/src/files';
+import { summarizeMcp } from '../../core/src/mcp';
 import * as cfg from '../../core/src/config';
 import * as backups from '../../core/src/backup';
 import * as libraries from '../../core/src/library';
@@ -49,6 +50,8 @@ const PAGE_SCRIPTS = ['markdown.js', 'stream.js', 'app.js', 'task.js', 'diagram-
 /** Where the order of the start screen's account tiles, and their short names, are kept (globalState). */
 const ACCOUNT_ORDER = 'claudestrator.accountOrder';
 const ACCOUNT_ALIASES = 'claudestrator.accountAliases';
+/** The MCP servers hidden on the Integrations page, by name (globalState): this machine's, as its servers are. */
+const MCP_HIDDEN = 'claudestrator.mcpHidden';
 const LANGUAGES = ['English', 'Ukrainian', 'German', 'French', 'Spanish', 'Polish', 'Portuguese', 'Italian', 'Japanese', 'Chinese'];
 
 class DashboardPanel implements RpcHandlers {
@@ -311,11 +314,7 @@ class DashboardPanel implements RpcHandlers {
       account: await this.orch.account(),
       accounts: await this.orch.accounts(),
       accountAliases: this.accountAliases(),
-      mcp: (() => {
-        const list = this.orch.mcp.servers;
-        const n = (st: string): number => list.filter((s) => s.state === st).length;
-        return { total: list.length, connected: n('connected'), problems: n('needs_auth') + n('failed'), installed: n('installed'), checking: this.orch.mcp.checking };
-      })(),
+      mcp: summarizeMcp({ servers: this.orch.mcp.servers, hidden: this.mcpHidden(), checking: this.orch.mcp.checking }),
       defaults: this.orch.defaults ? { models: this.orch.defaults.models, byModel: this.orch.defaults.byModel } : null,
       permissions: this.orch.pendingPermissions(),
     };
@@ -601,7 +600,17 @@ class DashboardPanel implements RpcHandlers {
     const stale = !this.orch.mcp.checkedAt || Date.now() - new Date(this.orch.mcp.checkedAt).getTime() > 2 * 60000;
     if (refresh || stale) await this.orch.refreshMcp();
     const health = await this.healthSummary();
-    return { ...this.orch.mcpState(), account: health.checking ? undefined : health.account };
+    return { ...this.orch.mcpState(), hidden: this.mcpHidden(), account: health.checking ? undefined : health.account };
+  }
+
+  mcpHidden(): string[] {
+    const stored: unknown = this.context.globalState.get(MCP_HIDDEN);
+    return Array.isArray(stored) ? stored.filter((n): n is string => typeof n === 'string') : [];
+  }
+
+  async $setMcpHidden({ name, hidden }: { name: string; hidden: boolean }) {
+    const rest = this.mcpHidden().filter((n) => n !== name);
+    await this.context.globalState.update(MCP_HIDDEN, hidden ? [...rest, name] : rest);
   }
 
   async $mcpLogin({ name }: { name: string }) {

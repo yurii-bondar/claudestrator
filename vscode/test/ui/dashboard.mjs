@@ -330,3 +330,30 @@ test('task tabs: ⌘-click on a task of the rail opens it in a tab; a plain clic
 
   await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
 });
+
+test('integrations: a hidden MCP server leaves the list for a folded one, and Show brings it back', async () => {
+  const server = (name, state) => ({ name, scope: 'user', state, transport: 'http', target: `https://${name}.example/mcp`, canLogin: true, login: null });
+  const servers = [server('asana', 'needs_auth'), server('jenkins', 'failed'), server('atlassian', 'connected')];
+  // The harness has no MCP servers of its own: the page is told of these, and what you hid comes from the host.
+  await b.eval(`(() => {
+    window.addEventListener('message', (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && Array.isArray(d.servers) && 'hidden' in d) d.servers = ${JSON.stringify(servers)}; }, true);
+    window.CS.S.ui.mcpHiddenOpen = false;
+    window.CS.go({ name: 'mcp' });
+    return true;
+  })()`);
+  const shown = () => b.eval(`[...document.querySelectorAll('.mcp-list:not(.mcp-hidden) .mcp-name')].map((n) => n.textContent)`);
+  await until(`document.querySelectorAll('.mcp-row').length === 3`, 'the servers');
+  assert.match(await textOf(`document.querySelector('.mcp-legend')`), /error or needs sign-in · 2/);
+
+  await b.eval(`document.querySelector('[data-action="mcp-hide"][data-name="jenkins"]').click(); true`);
+  await until(`!!document.querySelector('.mcp-hidden-fold')`, 'the hidden servers');
+  assert.deepEqual(await shown(), ['asana', 'atlassian']);
+  assert.match(await textOf(`document.querySelector('.mcp-legend')`), /error or needs sign-in · 1/, 'its error counts no more');
+  assert.match(await textOf(`document.querySelector('.mcp-hidden-fold')`), /Hidden · 1/);
+  assert.equal(await b.eval(`!!document.querySelector('.mcp-hidden')`), false, 'folded');
+
+  await b.eval(`document.querySelector('.mcp-hidden-fold').click(); true`);
+  await b.eval(`document.querySelector('.mcp-hidden [data-action="mcp-hide"][data-name="jenkins"]').click(); true`);
+  await until(`!document.querySelector('.mcp-hidden-fold')`, 'jenkins back');
+  assert.deepEqual(await shown(), ['asana', 'jenkins', 'atlassian']);
+});

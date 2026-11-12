@@ -23,6 +23,9 @@ test('requests: only a known request with parameters of its shape reaches a hand
   assert.ok(bad && !bad.ok);
   assert.match(bad.error, /checkpointId: expected a string/);
   assert.match(bad.error, /option: required/);
+
+  assert.ok(parsePageRequest({ type: 'req', id: 7, method: 'setMcpHidden', params: { name: 'claude.ai Asana', hidden: true } })?.ok);
+  assert.ok(!parsePageRequest({ type: 'req', id: 8, method: 'setMcpHidden', params: { name: 'jenkins', hidden: 'yes' } })?.ok, 'hidden or shown, nothing else');
 });
 
 test('requests: the page opens only web links outside the editor', async () => {

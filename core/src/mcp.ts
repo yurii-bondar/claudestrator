@@ -6,7 +6,7 @@ import * as path from 'path';
 import { exists } from './files';
 import { exec } from './git';
 import { readJsonFresh } from './env';
-import type { McpServer } from './wire';
+import type { McpServer, McpSummary } from './wire';
 
 /** `~/.claude.json` as far as this module reads it. */
 interface ClaudeJson {
@@ -178,8 +178,18 @@ async function writeUserMcpConfig(file: string, configDir?: string | null): Prom
   return result;
 }
 
+/**
+ * The servers' states in numbers, for the rail, the nav badge and the tools line. A server you hid on the Integrations
+ * page counts in none of them: its errors are not yours to fix.
+ */
+function summarizeMcp({ servers, hidden, checking }: { servers: readonly McpServer[]; hidden: readonly string[]; checking: boolean }): McpSummary {
+  const shown = servers.filter((s) => !hidden.includes(s.name));
+  const n = (state: string): number => shown.filter((s) => s.state === state).length;
+  return { total: shown.length, connected: n('connected'), problems: n('needs_auth') + n('failed'), installed: n('installed'), checking };
+}
+
 /** The last `--mcp-config` written per file: what its account file looked like then, and the result. */
 const mcpConfigs = new Map<string, { sig: string; result: string | null }>();
 
 export type { McpServer };
-export { writeUserMcpConfig, configuredMcpServers, parseMcpList, mergeMcp, checkMcpServers, redactMcpDetails, isMcpName, canLogin };
+export { writeUserMcpConfig, configuredMcpServers, parseMcpList, mergeMcp, checkMcpServers, redactMcpDetails, isMcpName, canLogin, summarizeMcp };

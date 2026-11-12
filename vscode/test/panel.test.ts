@@ -323,6 +323,30 @@ test('panel: Settings say whether Bitbucket has a token, from storage or the env
   }
 });
 
+test('panel: the MCP servers you hide are kept on this machine and left out of the overview\'s counts', async () => {
+  const stored = new Map<string, unknown>();
+  const servers = [
+    { name: 'Atlassian', scope: 'user', state: 'connected' },
+    { name: 'claude.ai Asana', scope: 'claude.ai', state: 'needs_auth' },
+    { name: 'jenkins', scope: 'user', state: 'failed' },
+  ];
+  const checkedAt = new Date().toISOString();
+  const p = integrationsPanel({ mcp: { servers, checking: false, checkedAt, error: null }, mcpState: () => ({ servers, checking: false, checkedAt, error: null }), health: { claude: {}, git: {}, gh: {}, glab: {} } });
+  Object.assign(p, { context: { globalState: { get: (k: string) => stored.get(k), update: async (k: string, v: unknown) => void stored.set(k, v) } } });
+
+  await p.$setMcpHidden({ name: 'jenkins', hidden: true });
+  await p.$setMcpHidden({ name: 'claude.ai Asana', hidden: true });
+  await p.$setMcpHidden({ name: 'jenkins', hidden: true });
+  assert.deepEqual(p.mcpHidden(), ['claude.ai Asana', 'jenkins'], 'once each');
+  assert.deepEqual((await p.$mcp({})).hidden, ['claude.ai Asana', 'jenkins'], 'the Integrations page lists them apart');
+
+  await p.$setMcpHidden({ name: 'claude.ai Asana', hidden: false });
+  assert.deepEqual(p.mcpHidden(), ['jenkins']);
+
+  stored.set('claudestrator.mcpHidden', ['jenkins', 7, null]);
+  assert.deepEqual(p.mcpHidden(), ['jenkins'], 'what storage holds is narrowed');
+});
+
 test('panel: Bitbucket is saved trimmed, and tested only once it can be', async () => {
   const saves: unknown[] = [];
   const p = integrationsPanel({ saveBitbucket: async (x: unknown) => void saves.push(x), bitbucket: () => null });

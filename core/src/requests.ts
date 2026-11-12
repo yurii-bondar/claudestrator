@@ -79,6 +79,7 @@ const PARAMS: { [M in keyof Rpc]: Check } = {
   testBitbucket: none,
   mcp: obj({ 'refresh?': T.bool() }),
   mcpLogin: named,
+  setMcpHidden: obj({ name: T.str(1, 200), hidden: T.bool() }),
   mcpShowLogin: named,
   mcpCancelLogin: named,
   mcpDetails: named,

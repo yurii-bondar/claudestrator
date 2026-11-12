@@ -903,6 +903,17 @@ test('defaults: what "default" really means is asked from the CLI, and shown per
   assert.equal(await resolveDefaults({ command: '/nonexistent/claude', cwd: os.tmpdir(), env: process.env }), null);
 });
 
+test('mcp: the counts leave out the servers you hid, their errors with them', () => {
+  const servers = mcp.parseMcpList(`claude.ai Docs: https://api.anthropic.com/mcp - ✔ Connected
+claude.ai Asana: https://mcp.asana.com/v2/mcp - ! Needs authentication
+jenkins: https://jenkins.example/mcp (HTTP) - ✗ Failed to connect
+shadcn: npx shadcn mcp - ⏸ Pending approval
+`);
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: [], checking: false }), { total: 4, connected: 1, problems: 2, installed: 1, checking: false });
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: ['claude.ai Asana', 'jenkins'], checking: true }), { total: 2, connected: 1, problems: 0, installed: 1, checking: true });
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: ['gone'], checking: false }).total, 4, 'a hidden name no server has changes nothing');
+});
+
 test('mcp: states from claude mcp list, configured servers, masked details and sign-in', async () => {
   const list = mcp.parseMcpList(`Checking MCP server health…
 
