@@ -10,6 +10,8 @@ import * as YAML from 'yaml';
 import { SKILLS, listSkills, addSkill, removeSkill, skillsDirOf } from '../src/skills';
 import { validateConfigLayer, validateLibraryLayer } from '../src/protocol';
 import { BUILTIN } from '../src/config';
+import { CHECKPOINT_TITLE } from '../src/describe';
+import { transcriptKey } from '../src/engine';
 
 const tmp = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 const library = SKILLS.find((s) => s.name === 'claudestrator-library')!;
@@ -58,13 +60,13 @@ test('skills: each SKILL.md names its folder and says when Claude Code should us
 const yamlOf = (md: string) => [...md.matchAll(/~~~yaml\n([\s\S]*?)~~~/g)].map((m) => YAML.parse(m[1]!) as Record<string, unknown>);
 
 test('skills: Claudestrator brings the library, workspace map and config skills', () => {
-  assert.deepEqual(SKILLS.map((s) => s.name), ['claudestrator-library', 'claudestrator-workspace-map', 'claudestrator-config']);
+  assert.deepEqual(SKILLS.map((s) => s.name), ['claudestrator-library', 'claudestrator-workspace-map', 'claudestrator-config', 'claudestrator-task']);
 });
 
 test("skills: every skill's YAML examples are config Claudestrator accepts", () => {
   for (const s of SKILLS) {
     const blocks = yamlOf(s.files['SKILL.md']!);
-    assert.ok(blocks.length, `${s.name} has examples`);
+    if (s.name !== 'claudestrator-task') assert.ok(blocks.length, `${s.name} has examples`);
     for (const [i, block] of blocks.entries()) assert.deepEqual(validateConfigLayer(block), [], `${s.name}, example ${i + 1}`);
   }
 });
@@ -99,4 +101,11 @@ test("skills: the library skill lists the built-in agents with their outputs, an
     assert.ok(own(agent).includes(json), `${label}: as ${agent} hands it over`);
   }
   assert.ok(shape('plan'), 'the plan shape too');
+});
+
+test('skills: the task skill knows every checkpoint a task can wait at, and names transcripts as Claudestrator does', () => {
+  const md = SKILLS.find((s) => s.name === 'claudestrator-task')!.files['SKILL.md']!;
+  for (const id of Object.keys(CHECKPOINT_TITLE)) assert.match(md, new RegExp(`^\\| ${id} \\|`, 'm'), id);
+  assert.ok(md.includes(`\`${transcriptKey(7, { agent: 'developer', repo: 'api' })}.ndjson\``), 'the example key');
+  assert.match(md, /never change it/, 'it reads the task, and leaves its files alone');
 });

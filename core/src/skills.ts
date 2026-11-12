@@ -331,6 +331,90 @@ Never put a secret in a config: the project's is committed. Never loosen the pol
 - Every policy setting you added is the narrowest that works, and the user knows why it is there.
 `;
 
+/** How to find out what happened to a task from its files in .orch/tasks, and what to do about it. */
+const TASK_SKILL = `---
+name: claudestrator-task
+description: Finds out why a Claudestrator task failed, stopped, got blocked or did something unexpected, from its files in .orch/tasks (the event log, the agents' transcripts and reports, the checks' logs), and says what to change and what to press in the dashboard. Use when asked why a Claudestrator task is stuck, red, blocked, failed, expensive or wrong, or to look into a task by its id.
+---
+
+# Looking into a Claudestrator task
+
+Everything a task did is on disk, in the workspace folder Claudestrator works in (Settings → Workspace): \`.orch/tasks/<task id>/\`. Read it; never change it. The event log is the task's source of truth, and the dashboard rebuilds the task from it: an edit there breaks the task. What to do about a problem is done in the dashboard, in the config, in the instructions, or in the code, never in \`.orch/\`.
+
+## Where things are
+
+~~~
+.orch/tasks/<id>/
+  events.ndjson               # one JSON event per line, in order: the source of truth
+  ticket.md, ticket.json      # the ticket as the agents read it
+  plan/<agent>.md             # the plan, with its json at the end
+  reports/r<round>/<agent>-<repo>.md   # what a code or tests step reported, per round
+  reviews/r<round>/<agent>.md # the reviews of a round
+  reviews/r<round>/diff.patch # the diff those reviewers read
+  readiness/<agent>.md, audit/<agent>.md   # a report scenario's reports
+  report.md                   # the task's own report, when it has one
+  gates/r<round>/<repo>.<check>.log        # each check's whole output
+  transcripts/<seq>-<agent>[-<repo>].ndjson   # each step's session: prompt, text, tool calls and results
+  run.lease                   # the window that runs it now
+.orch/worktrees/<id>/<repo>   # in worktree mode, where the task's code is
+~~~
+
+The events that tell the story:
+
+- \`task_created\`: the input, the source, the scenario, the pipeline (\`pipeline.stages\`), the context files, the git mode, the limits.
+- \`intake_completed\`: the ticket as read (\`spec\`); a task without a planner gets its repos here.
+- \`stage_started\` / \`stage_completed\` / \`stage_failed\`: each step, by \`agent\` and \`repo\`. \`stage_completed.artifact\` is its report's path; it carries the step's \`plan\`, \`verdict\`, \`readiness\` or \`audit\`, and \`gates\` (\`pass\`, \`fail\` or \`none\`). \`stage_failed.error\` says why, with \`blocked: true\` when the agent said it cannot go on.
+- \`gates_ran\`: a step's checks, with \`status\`, \`attempt\` and \`summary\`.
+- \`checkpoint_answered\`: the user's answer at a checkpoint, with the \`option\` and any \`feedback\`.
+- \`agent_stopped\`, \`agent_progress\`: a session's \`sessionId\`, \`costUsd\`, \`turns\`, \`model\`, \`effort\`, \`configDir\`.
+- \`committed\`, \`commit_failed\` (with the hook's \`output\`), \`pr_opened\`, \`published\`, \`review_posted\`, \`jira_comment\`.
+- \`stopped\` (with its \`reason\`), \`resumed\`, \`pipeline_changed\`, \`note\`.
+- \`transition_rejected\`: Claudestrator refused an event as not fitting the task's state; worth reporting as a bug with the task's id.
+
+A transcript's key is the \`seq\` of its step's \`stage_started\`, four digits, then the agent and the repo: \`0007-developer-api.ndjson\`. Its lines are \`prompt\`, \`text\`, \`thinking\`, \`tool_use\`, \`tool_result\`, \`user\` (what the user sent the agent), \`gates\`, \`blocked\` and \`turn_end\` items.
+
+Logs and transcripts can be megabytes. Search them; do not read them whole: \`grep -n '"type":"stage_' events.ndjson\`, \`tail -n 60\` of a check's log, \`grep -n '"type":"tool_result"' … | tail\`.
+
+## Where a task waits for the user
+
+| checkpoint | what happened | where to look |
+|---|---|---|
+| approve-plan | the planner wrote a plan | \`plan/<agent>.md\` |
+| approve-step | a scenario's \`approve:\` step | the report of the step before it |
+| gate-failure | checks stayed red after the agent's attempts (\`limits.gateAttempts\`) | \`gates/r<round>/<repo>.<check>.log\`, the \`gates_ran\` events, the step's transcript |
+| agent-failure | an agent failed, or said it is blocked | \`stage_failed.error\`, its report and the end of its transcript |
+| review-limit | the review rounds are used up (\`limits.reviewRounds\`) with blocking findings left | the last round's \`reviews/\` |
+| protected-changes | an agent changed \`.claude/\`, \`.mcp.json\` or \`.vscode/\`, which no agent may write | \`stage_completed.protectedChanges\` |
+| hook-failure | the commit failed, mostly its git hook | \`commit_failed.output\` |
+| confirm-push | the work is committed and waits to be pushed | \`reviews/\`, the PR texts |
+| post-review | a PR review waits to be posted | \`reviews/\` |
+
+## Common causes
+
+- A check fails in Claudestrator but passes in a terminal: the sandbox. Its log ends with what it refused (EPERM, a read-only file system, \`CONNECT tunnel failed, response 403\`, \`listen EPERM\`, no Docker). The fix is a setting (\`policy.writable\`, \`network\`, \`localPorts\`, \`checkEnv\`), never a change to the code; the claudestrator-config skill has the table.
+- A check fails at once and no attempt helps: it timed out, or its \`dir\` is not there. Fix the check in the config.
+- An agent is blocked: the plan does not hold, the branch lacks code the plan assumes, or a test found a bug in code the tester may not change. Its reason is in \`stage_failed.error\` and its report. The user answers with feedback (Retry), changes the plan, or fixes the cause.
+- The same failure again after a Retry: nothing changed between the attempts. Something must change first: a setting, the branch, the instructions, or the feedback.
+- The task stopped by itself: a budget (\`limits.budgetUsd\`), the account's usage limit (the task says when it resets), or an agent that showed no sign of work for 20 minutes.
+- A step is "interrupted": the window that ran it closed. Resume runs the step again.
+- "Runs in another window": \`run.lease\` names the window; it goes on there.
+- A report was sent back: its json did not match, a plan lacked a \`### <repo>\` section for a repo of its json, or the plan's branch is taken already. The agent is asked again in its session (its transcript shows "Your report could not be read: …"), twice; then the step fails with \`report still invalid after … corrections\` and the reason.
+- Expensive or slow: add \`costUsd\` and \`turns\` per step from \`agent_stopped\`; look for long tool loops in the transcripts, \`mcp: true\` on agents that need no MCP, effort higher than the step needs.
+
+## What the user can do
+
+In the dashboard, on the task: answer the checkpoint (with feedback the agent reads), Retry or Resume, Stop, change the pipeline of the steps not run yet, Fix in chat (Claude Code started on the failure), and Continue in terminal on a step (its session again: \`claude --resume <sessionId>\` with \`CLAUDE_CONFIG_DIR\` set to the step's \`configDir\`).
+
+Outside it: the config (\`.claudestrator/config.yaml\`), an agent's instructions, the workspace map, or the code on the task's branch in its checkout or worktree, then Retry.
+
+## Report
+
+1. What happened, in order, in a few lines: the steps, where it stopped, at which checkpoint.
+2. The cause, with the evidence: the event, and the line of the log, report or transcript that shows it.
+3. What to do: the change (a setting, the instructions, the code) and then the button to press. Say when a Retry alone will fail the same way.
+4. What you could not tell, and what would tell it.
+`;
+
 const SKILLS: readonly BundledSkill[] = [
   {
     name: 'claudestrator-library',
@@ -349,6 +433,12 @@ const SKILLS: readonly BundledSkill[] = [
     label: 'Setting up config and checks',
     about: 'Claude Code writes .claudestrator/config.yaml from your repos and their CI: the checks agents get back when they fail, quiet enough to read, and the sandbox setting a check needs when it passes in a terminal but not here.',
     files: { 'SKILL.md': CONFIG_SKILL },
+  },
+  {
+    name: 'claudestrator-task',
+    label: 'Looking into a task',
+    about: 'Claude Code reads a task\'s event log, transcripts, reports and check logs, and says why it failed, got blocked or cost so much, with the evidence, and what to change before you retry. Ask it, e.g., "why is task PROJ-123 blocked?".',
+    files: { 'SKILL.md': TASK_SKILL },
   },
 ];
 
