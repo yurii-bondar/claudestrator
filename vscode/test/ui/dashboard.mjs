@@ -6,7 +6,7 @@
 import test, { after, before } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -383,4 +383,19 @@ test('composer: Stay awake names the tool of each system and whether this one ha
   // This machine's own tool, as the host found it.
   await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); window.CS.views.home.renderAwake(); return true; })()`);
   if (process.platform === 'darwin') assert.match(await textOf(`${menu}.querySelector('.awake-tool')`), /caffeinate, built into macOS: installed/);
+});
+
+test('rail: the workspace is named with a folder icon, or a repo icon when it is a git repository itself', async () => {
+  const kind = () => b.eval(`(() => { const i = document.querySelector('[data-region="workspace"] .ws-icon'); return i && (i.classList.contains('ws-repo') ? 'repo' : 'folder'); })()`);
+  await b.eval(`(async () => { await window.CS.loadOverview(); return true; })()`);
+  assert.equal(await kind(), 'folder', 'a folder of repos');
+  assert.equal(await textOf(`document.querySelector('[data-region="workspace"] .brand-name')`), path.basename(ws));
+  execFileSync('git', ['init', '-q'], { cwd: ws });
+  try {
+    await b.eval(`(async () => { await window.CS.loadOverview(); return true; })()`);
+    assert.equal(await kind(), 'repo');
+    assert.match(await b.eval(`document.querySelector('[data-region="workspace"] .brand-name').title`), /\(a git repository\)/);
+  } finally {
+    rmSync(path.join(ws, '.git'), { recursive: true, force: true });
+  }
 });

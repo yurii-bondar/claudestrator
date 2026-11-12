@@ -672,6 +672,8 @@ export interface TaskSection {
 export interface Overview {
   root: string | null;
   rootName: string | null;
+  /** Whether the workspace folder is itself a git repository (it has a `.git`), not a folder of them. */
+  rootIsRepo: boolean;
   hasConfig: boolean;
   config: ConfigSummary | null;
   health: HealthSummary;

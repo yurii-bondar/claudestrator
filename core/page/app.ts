@@ -516,8 +516,10 @@ interface Views {
     const root = tree ? item(tasks, `data-action="tasks-toggle" aria-expanded="${tasksOpen}"`) : item(tasks);
     patch('nav', `${root}${tree && tasksOpen ? tree : ''}${NAV.filter((n) => n.group === 'setup').map((n) => item(n)).join('')}`);
     patch('topbar-title', esc(NAV.find((n) => n.name === active)?.label || 'Claudestrator'));
-    // The editor's tab already says Claudestrator: the rail names the folder it works in, its path on hover.
-    patch('workspace', o && o.root ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name" title="${esc(`${o.root}\nOpen the Tasks page`)}">${esc(o.rootName || o.root)}</span>` : o ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name muted">No folder open</span>` : '');
+    // The editor's tab already says Claudestrator: the rail names the folder it works in (a repo's icon when it is one),
+    // its path on hover.
+    const kind = o && o.rootIsRepo ? 'repo' : 'folder';
+    patch('workspace', o && o.root ? `<span class="ws-icon ws-${kind}">${icon(kind)}</span><span class="brand-name" title="${esc(`${o.root}${kind === 'repo' ? ' (a git repository)' : ''}\nOpen the Tasks page`)}">${esc(o.rootName || o.root)}</span>` : o ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name muted">No folder open</span>` : '');
     patch('task-tabs', taskTabs(o));
     patch('rail-foot', `${railHealth(o && o.health)}${limitsPanel(o && o.limits)}${accountSwitcher(o, Boolean(o && o.health && !o.health.checking && !healthProblem(o.health)))}`);
     renderGlobalPermissions();

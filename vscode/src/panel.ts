@@ -304,6 +304,7 @@ class DashboardPanel implements RpcHandlers {
     return {
       root: this.root,
       rootName: this.root ? path.basename(this.root) : null,
+      rootIsRepo: this.root ? await exists(path.join(this.root, '.git')) : false,
       languages: LANGUAGES,
       hasConfig: await this.orch.hasProjectConfig(),
       config: this.root ? await this.configSummary() : null,
