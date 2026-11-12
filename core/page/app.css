@@ -16,14 +16,15 @@
   --cs-text-primary: var(--vscode-foreground);
   --cs-text-secondary: var(--vscode-descriptionForeground);
   --cs-text-link: var(--vscode-textLink-foreground);
-  --cs-text-on-accent: var(--vscode-button-foreground);
+  --cs-text-on-accent: var(--cs-brand-on);
   /* borders */
   --cs-border-default: var(--vscode-panel-border, rgba(128, 128, 128, 0.22));
   --cs-border-strong: var(--vscode-contrastBorder, rgba(128, 128, 128, 0.38));
   --cs-border-focus: var(--vscode-focusBorder);
-  /* controls: inside an IDE the actions take the host's button colours; the brand colour stays in the logo */
-  --cs-accent-default: var(--vscode-button-background);
-  --cs-accent-hover: var(--vscode-button-hoverBackground);
+  /* controls: the primary actions wear the brand colour in every host, as the desktop app's do; high contrast keeps
+     the theme's own (below) */
+  --cs-accent-default: var(--cs-brand-button);
+  --cs-accent-hover: var(--cs-brand-button-hover);
   --cs-accent-border: var(--vscode-button-border, transparent);
   --cs-button-secondary-bg: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.16));
   --cs-button-secondary-fg: var(--vscode-button-secondaryForeground, var(--cs-text-primary));
@@ -56,6 +57,9 @@
   --cs-brand-from: #e3896a;
   --cs-brand-to: #bd5b3a;
   --cs-brand-on: #faf9f5;
+  /* a primary button: the brand darkened until white text on it reads (4.5:1 and more) */
+  --cs-brand-button: #b0522f;
+  --cs-brand-button-hover: #a24826;
   /* type: the host's family and base size, one ramp of seven sizes and three weights */
   --cs-font-ui: var(--vscode-font-family);
   --cs-font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
@@ -150,6 +154,10 @@ body.vscode-high-contrast {
   --cs-status-err-border: var(--cs-status-err-text);
   --cs-status-severe-border: var(--cs-status-severe-text);
   --cs-accent-border: var(--vscode-button-border, var(--vscode-contrastBorder));
+  /* the theme's button colours, made to be told apart in it, not the brand's */
+  --cs-accent-default: var(--vscode-button-background);
+  --cs-accent-hover: var(--vscode-button-hoverBackground);
+  --cs-text-on-accent: var(--vscode-button-foreground);
 }
 /* Hover has no background in high contrast themes: it shows as a dashed outline. */
 body.vscode-high-contrast :is(.btn, .icon-btn, .nav-item, .task-card, .tab, .menu button, .agent-chip, .st):hover {
