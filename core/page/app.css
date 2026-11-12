@@ -225,9 +225,10 @@ button.rail-health { width: 100%; padding: 2px 0; border: 0; background: transpa
 .logo { width: 28px; height: 28px; flex: none; border-radius: var(--cs-radius-md); display: grid; place-items: center; color: var(--cs-brand-on); background: linear-gradient(135deg, var(--cs-brand-from), var(--cs-brand-to)); box-shadow: 0 2px 8px color-mix(in srgb, var(--cs-brand-to) 35%, transparent); }
 .logo .ic { width: 17px; height: 17px; }
 .logo .logo-mark { width: 22px; height: 22px; }
-.brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.brand-name { font-weight: var(--cs-weight-strong); font-size: var(--cs-font-md); }
-.brand-sub { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-name { min-width: 0; font-weight: var(--cs-weight-strong); font-size: var(--cs-font-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The workspace's folder, where the rail starts: the editor's tab already names Claudestrator. */
+.ws-icon { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--cs-radius-md); background: var(--cs-bg-raised); border: 1px solid var(--cs-border-default); color: var(--cs-text-secondary); }
+.ws-icon .ic { width: 16px; height: 16px; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 /* The tasks scroll; Setup and the footer stay under them. */
 /* The tasks and Setup scroll together; the footer stays at the bottom. */

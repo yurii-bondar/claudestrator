@@ -458,10 +458,7 @@ interface Views {
         <div class="shell">
           <aside class="rail" id="rail" aria-label="Claudestrator">
             <div class="rail-head">
-              <button class="brand" data-action="go-home" title="Tasks">
-                <span class="logo">${LOGO}</span>
-                <span class="brand-text"><span class="brand-name">Claudestrator</span><span class="brand-sub" data-region="workspace"></span></span>
-              </button>
+              <button class="brand" data-action="go-home" data-region="workspace"></button>
               <button class="icon-btn rail-close" data-action="toggle-nav" aria-label="Close the menu" title="Close the menu">${icon('x')}</button>
             </div>
             <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
@@ -519,7 +516,8 @@ interface Views {
     const root = tree ? item(tasks, `data-action="tasks-toggle" aria-expanded="${tasksOpen}"`) : item(tasks);
     patch('nav', `${root}${tree && tasksOpen ? tree : ''}${NAV.filter((n) => n.group === 'setup').map((n) => item(n)).join('')}`);
     patch('topbar-title', esc(NAV.find((n) => n.name === active)?.label || 'Claudestrator'));
-    patch('workspace', o && o.rootName ? esc(o.rootName) : '');
+    // The editor's tab already says Claudestrator: the rail names the folder it works in, its path on hover.
+    patch('workspace', o && o.root ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name" title="${esc(`${o.root}\nOpen the Tasks page`)}">${esc(o.rootName || o.root)}</span>` : o ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name muted">No folder open</span>` : '');
     patch('task-tabs', taskTabs(o));
     patch('rail-foot', `${railHealth(o && o.health)}${limitsPanel(o && o.limits)}${accountSwitcher(o, Boolean(o && o.health && !o.health.checking && !healthProblem(o.health)))}`);
     renderGlobalPermissions();
