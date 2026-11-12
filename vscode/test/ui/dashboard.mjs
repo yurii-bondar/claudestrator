@@ -24,7 +24,7 @@ let ws;
 function startPreview() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'cs-ui-home-'));
   const env = { ...process.env, HOME: home, USERPROFILE: home, PREVIEW_SETUP: '1', PREVIEW_DELAY: '50', PREVIEW_PORT: String(PORT) };
-  for (const k of ['GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'ATLASSIAN_API_TOKEN']) delete env[k];
+  for (const k of ['CLAUDE_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'ATLASSIAN_API_TOKEN']) delete env[k];
   server = spawn(process.execPath, [path.join(ROOT, 'dist', 'vscode', 'test', 'harness', 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   return new Promise((resolve, reject) => {
     let out = '';
