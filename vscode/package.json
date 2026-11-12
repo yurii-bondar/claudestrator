@@ -182,6 +182,11 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "claudestrator.openTaskInTab",
+        "title": "Open in Tab",
+        "category": "Claudestrator"
+      },
+      {
         "command": "claudestrator.runTask",
         "title": "Run / Resume Task",
         "category": "Claudestrator",
@@ -342,19 +347,24 @@
           "group": "1_task@1"
         },
         {
+          "command": "claudestrator.openTaskInTab",
+          "when": "view == claudestrator.tasks && viewItem =~ /^task/",
+          "group": "1_task@2"
+        },
+        {
           "command": "claudestrator.answer",
           "when": "view == claudestrator.tasks && viewItem =~ /waiting/",
-          "group": "1_task@2"
+          "group": "1_task@3"
         },
         {
           "command": "claudestrator.runTask",
           "when": "view == claudestrator.tasks && viewItem =~ /resumable/",
-          "group": "1_task@3"
+          "group": "1_task@4"
         },
         {
           "command": "claudestrator.stopTask",
           "when": "view == claudestrator.tasks && viewItem =~ /stoppable/",
-          "group": "1_task@4"
+          "group": "1_task@5"
         },
         {
           "command": "claudestrator.revealTaskFolder",
@@ -374,19 +384,24 @@
           "group": "1_task@1"
         },
         {
+          "command": "claudestrator.openTaskInTab",
+          "when": "webviewId == 'claudestrator.dashboard' && webviewSection == 'task'",
+          "group": "1_task@2"
+        },
+        {
           "command": "claudestrator.answer",
           "when": "webviewId == 'claudestrator.dashboard' && webviewSection == 'task' && taskStatus == 'waiting'",
-          "group": "1_task@2"
+          "group": "1_task@3"
         },
         {
           "command": "claudestrator.runTask",
           "when": "webviewId == 'claudestrator.dashboard' && webviewSection == 'task' && taskResumable",
-          "group": "1_task@3"
+          "group": "1_task@4"
         },
         {
           "command": "claudestrator.stopTask",
           "when": "webviewId == 'claudestrator.dashboard' && webviewSection == 'task' && taskStatus == 'running'",
-          "group": "1_task@4"
+          "group": "1_task@5"
         },
         {
           "command": "claudestrator.revealTaskFolder",
@@ -409,6 +424,10 @@
       "commandPalette": [
         {
           "command": "claudestrator.openTask",
+          "when": "false"
+        },
+        {
+          "command": "claudestrator.openTaskInTab",
           "when": "false"
         },
         {

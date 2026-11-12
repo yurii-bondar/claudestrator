@@ -176,6 +176,10 @@ function activate(context: vscode.ExtensionContext) {
       const taskId = commandTaskId(arg) || (await pickTask('Open which task?'));
       if (taskId) open(context, { name: 'task', taskId });
     }),
+    reg('claudestrator.openTaskInTab', async (arg) => {
+      const taskId = commandTaskId(arg) || (await pickTask('Open which task in a tab?'));
+      if (taskId) open(context, { name: 'task', taskId, tab: true });
+    }),
     reg('claudestrator.answer', async (arg) => {
       const taskId = commandTaskId(arg) || (await pickTask('Which task?', (c) => c.status.key === 'waiting'));
       if (taskId) open(context, { name: 'task', taskId, focus: 'checkpoint' });

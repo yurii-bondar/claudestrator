@@ -259,3 +259,51 @@ test('clicks: a button whose region is drawn anew between the press and the rele
   assert.equal(r.clicks, 1, 'the click went through');
   assert.equal(r.text, 'two', 'and the region shows what it was drawn with, once the click is done');
 });
+
+/** A task as the overview lists it, running or finished. */
+const card = (taskId, title, running) => ({
+  taskId, title, source: null, scenario: 'deliver', checkpoint: null, live: null, error: null, stopReason: undefined, round: 1, maxRounds: 2,
+  status: running ? { key: 'running', label: 'Running', tone: 'accent', group: 'running', resumable: false } : { key: 'done', label: 'Done', tone: 'ok', group: 'done', resumable: false },
+  phase: running ? 'agents' : 'done', outcome: undefined, prs: {}, branch: null, repos: [], cost: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), progress: { done: 0, total: 1 }, mini: [],
+});
+/** The tasks with a tab, in the order the strip shows them. */
+const tabs = () => b.eval(`[...document.querySelectorAll('.task-tabs .task-tab')].map((t) => t.dataset.id)`);
+
+test('task tabs: none by default; "Open in Tab" adds one, a drag reorders them, × closes one', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false), card('t-c', 'Gamma', true)];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: [] }; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  assert.equal(await b.eval(`!!document.querySelector('.task-tabs')`), false, 'running tasks open no tab by themselves');
+
+  // As the host sends it for the menu's Open in Tab.
+  for (const id of ['t-a', 't-b', 't-c']) {
+    await b.eval(`window.postMessage({ type: 'navigate', route: { name: 'task', taskId: '${id}', tab: true } }, '*'); true`);
+    await until(`document.querySelectorAll('.task-tabs .task-tab').length && [...document.querySelectorAll('.task-tab')].some((t) => t.dataset.id === '${id}')`, `the tab of ${id}`);
+  }
+  assert.deepEqual(await tabs(), ['t-a', 't-b', 't-c']);
+  assert.equal(await b.eval(`window.CS.S.route.tab`), undefined, 'the route keeps no tab flag');
+  assert.match(await textOf(`document.querySelector('.task-tab[data-id="t-b"]')`), /Beta/);
+
+  // Gamma dropped on the left half of Alpha goes first.
+  await b.eval(`(() => {
+    const at = (id) => document.querySelector('.task-tab[data-id="' + id + '"]');
+    const dt = new DataTransfer();
+    const r = at('t-a').getBoundingClientRect();
+    const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 2, clientY: r.top + 2 }));
+    fire(at('t-c'), 'dragstart');
+    fire(at('t-a'), 'dragover');
+    fire(at('t-a'), 'drop');
+    fire(at('t-c'), 'dragend');
+    return true;
+  })()`);
+  assert.deepEqual(await tabs(), ['t-c', 't-a', 't-b']);
+
+  await b.eval(`document.querySelector('.task-tab[data-id="t-a"] .tab-x').click(); true`);
+  assert.deepEqual(await tabs(), ['t-c', 't-b']);
+  assert.deepEqual(await b.eval(`window.CS.S.ui.taskTabs`), ['t-c', 't-b'], 'kept for the next time the page loads');
+
+  // A task deleted since loses its tab.
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify([tasks[1]])}, sections: [] }; await window.CS.loadOverview(); return true; })()`);
+  assert.deepEqual(await tabs(), ['t-b']);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
+});
