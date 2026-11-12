@@ -221,10 +221,13 @@ function main(): void {
     if (issue) {
       tool('mcp__Atlassian__getJiraIssue', { issueIdOrKey: issue[1] });
       tool('mcp__Atlassian__addCommentToJiraIssue', { issueIdOrKey: issue[1], commentBody: 'hi' });
-      // FAKE_JIRA_CHILDREN={"PROJ-805": [{key, summary, type, done}]}: the issues it finds under an issue (sub-tasks).
-      const children = (JSON.parse(process.env.FAKE_JIRA_CHILDREN || '{}') as Record<string, unknown[]>)[issue[1]!];
+      // FAKE_JIRA_CHILDREN={"PROJ-805": [{key, summary, type, done}]}: the issues it finds under an issue (sub-tasks), a
+      // Story's; or {"PROJ-900": {"issueType": "Epic", "children": [...]}}.
+      const found = (JSON.parse(process.env.FAKE_JIRA_CHILDREN || '{}') as Record<string, unknown[] | { issueType: string; children: unknown[] }>)[issue[1]!];
+      const children = Array.isArray(found) ? found : found && found.children;
+      const issueType = Array.isArray(found) ? 'Story' : found && found.issueType;
       if (children) tool('mcp__Atlassian__searchJiraIssuesUsingJql', { jql: `parent = ${issue[1]}` });
-      return reply(`Read it.\n\`\`\`json\n${JSON.stringify({ title: `${issue[1]} Cap the max bet`, url: `https://acme.atlassian.net/browse/${issue[1]}`, description: 'Players can bet too much.\n\n## Acceptance criteria\n- bets above the cap are rejected', acceptanceCriteria: [], links: [], context: 'PM: per operator, not global', ...(children && { issueType: 'Story', children }) })}\n\`\`\``, uuid);
+      return reply(`Read it.\n\`\`\`json\n${JSON.stringify({ title: `${issue[1]} Cap the max bet`, url: `https://acme.atlassian.net/browse/${issue[1]}`, description: 'Players can bet too much.\n\n## Acceptance criteria\n- bets above the cap are rejected', acceptanceCriteria: [], links: [], context: 'PM: per operator, not global', ...(children && { issueType, children }) })}\n\`\`\``, uuid);
     }
     const linear = prompt.match(/^Read the Linear issue (\S+) \((\S+)\)/);
     if (linear) {

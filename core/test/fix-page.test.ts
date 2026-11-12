@@ -58,18 +58,18 @@ test('fix page: the pick is remembered, shown on the button, and sent with the c
   assert.deepEqual(sent(calls), [['fixInChat', { taskId: 'T-1', model: 'sonnet', effort: 'high' }]]);
 
   // Drawn again with the pick: it is selected, and the button says it.
-  const again = await taskScreen(hookFailure, { fixModel: 'sonnet', fixEffort: 'high' });
+  const again = await taskScreen(hookFailure, { ui: { fixModel: 'sonnet', fixEffort: 'high' } });
   assert.equal(options(again.regions['task-checkpoint']!, 'fix-model').selected, 'sonnet');
   assert.equal(options(again.regions['task-checkpoint']!, 'fix-effort').selected, 'high');
   assert.match(again.regions['task-checkpoint']!, /<span class="fix-pick muted">sonnet · high<\/span>/);
 });
 
 test("fix page: the account's defaults send no model and no effort; a model the CLI list lacks stays a choice", async () => {
-  const { view, calls } = await taskScreen(hookFailure, { fixModel: 'inherit', fixEffort: 'bogus' });
+  const { view, calls } = await taskScreen(hookFailure, { ui: { fixModel: 'inherit', fixEffort: 'bogus' } });
   await view.actions['fix-in-chat']!({ closest: () => null });
   assert.deepEqual(sent(calls), [['fixInChat', { taskId: 'T-1', model: 'inherit' }]], 'an effort the page does not know is not sent');
 
-  const pinned = await taskScreen(hookFailure, { fixModel: 'claude-opus-5-5' });
+  const pinned = await taskScreen(hookFailure, { ui: { fixModel: 'claude-opus-5-5' } });
   const models = options(pinned.regions['task-checkpoint']!, 'fix-model');
   assert.equal(models.selected, 'claude-opus-5-5', 'picked before the list had it: still selected, not silently the default');
   assert.equal(models.values.at(-1), 'claude-opus-5-5');

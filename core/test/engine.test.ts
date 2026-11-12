@@ -343,6 +343,51 @@ test("engine: a Jira story's sub-tasks become tasks of their own in its group, n
   }
 });
 
+test("engine: an epic's child issues go into the epic's group, keeping what the task's own group asked; one of a project not allowed is left out, and said so", async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\njira: { allowedProjects: [PROJ] }\ngroups:\n  release:\n    type: group\n    label: Release 2\n    instructions: Ship behind the release-2 flag.\n    baseBranch: release/2\n');
+  const epic = { 'PROJ-900': { issueType: 'Epic', children: [{ key: 'PROJ-901', summary: 'Seeds', type: 'Story', done: false }, { key: 'OTHER-5', summary: 'Theirs', type: 'Story', done: false }] } };
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: JSON.stringify(epic) });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  const logs: { level: string; message: string }[] = [];
+  h.engine.on('log', (l: { level: string; message: string }) => void logs.push(l));
+  try {
+    const { taskId } = await h.engine.start({ text: 'PROJ-900', group: 'release' });
+    const s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint && s.checkpoint.id, 'split', JSON.stringify(h.engine.lastError(taskId)));
+    const group = { id: 'proj-900', type: 'epic', label: 'Cap the max bet', jira: 'PROJ-900', instructions: 'Ship behind the release-2 flag.', baseBranch: 'release/2' };
+    assert.deepEqual(s.group, group, "the epic's own group, with what Release 2 asked of its tasks");
+    assert.deepEqual(s.children, ['PROJ-901']);
+    assert.deepEqual((await h.engine.svc.state('PROJ-901')).group, group);
+    assert.equal(await h.engine.svc.exists('OTHER-5'), false);
+    assert.ok(logs.some((l) => l.level === 'warn' && /OTHER-5 did not become a task: Jira project OTHER is not allowed/.test(l.message)), JSON.stringify(logs));
+    assert.ok(logs.some((l) => l.level === 'info' && /1 sub-task of PROJ-900 added to Cap the max bet, not started: PROJ-901/.test(l.message)));
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test('engine: a ticket whose sub-tasks are all done, or are tasks already, does not split again', async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\n');
+  const done = { 'PROJ-805': [{ key: 'PROJ-806', summary: 'Old', type: 'Sub-task', done: true }] };
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: JSON.stringify(done) });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  try {
+    const s = await runTask(h.engine, (await h.engine.start({ text: 'PROJ-805' })).taskId);
+    assert.equal(s.phase, 'done', 'it worked as one task');
+    assert.equal(s.children, undefined);
+    assert.equal(s.group, undefined);
+
+    // A sub-task that is a task already keeps its own group and choices; the story still lists it.
+    const { taskId: own } = await h.engine.start({ text: 'PROJ-811' });
+    const before = await h.engine.svc.state(own);
+    const r = await h.engine.splitTicket({ ...s, source: { kind: 'jira', key: 'PROJ-810' } }, { ...s.spec!, children: [{ key: 'PROJ-811', summary: 'Mine', type: 'Sub-task', done: false }] });
+    assert.deepEqual(r && r.children, ['PROJ-811']);
+    assert.deepEqual(await h.engine.svc.state(own), before, 'left as it was');
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
 test('engine: a split story can still be worked on as one task, and joins a group the config has for its key', async () => {
   const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\ngroups:\n  rng:\n    type: epic\n    label: RNG\n    jira: PROJ-805\n    baseBranch: feat/rng\n');
   const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: SUBTASKS });

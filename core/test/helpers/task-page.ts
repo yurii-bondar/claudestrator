@@ -17,11 +17,20 @@ const EFFORT_LABEL: Record<string, string> = { '': 'Default effort', low: 'Low',
 const node = () => ({ innerHTML: '', textContent: '', classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, dataset: {}, scrollIntoView() {}, querySelector: () => null, querySelectorAll: () => [] });
 
 /** The task screen of a task in `screen`: the HTML each region got, and what its actions asked the host. */
-/**
- * `screen` is what the host sends that the test sets; the rest is a task waiting at nothing. `elements`: what the
- * page's `$$` finds for a selector (checkboxes as the test ticks them).
- */
-async function taskScreen(screen: Record<string, unknown>, ui: Record<string, unknown> = {}, elements: Record<string, unknown[]> = {}) {
+/** How the test sets up the page around the screen. */
+interface ScreenOptions {
+  /** The page's remembered choices (`S.ui`). */
+  ui?: Record<string, unknown>;
+  /** What the page's `$$` finds for a selector (checkboxes as the test ticks them). */
+  elements?: Record<string, unknown[]>;
+  /** Helpers of the shell (window.CS) the test draws or records with, in place of the ones that draw nothing. */
+  shell?: Record<string, unknown>;
+  /** What the overview holds (`S.overview`): the tasks the side rail lists. */
+  overview?: Record<string, unknown>;
+}
+
+/** `screen` is what the host sends that the test sets; the rest is a task waiting at nothing. */
+async function taskScreen(screen: Record<string, unknown>, { ui = {}, elements = {}, shell = {}, overview = {} }: ScreenOptions = {}) {
   const regions: Record<string, string> = {};
   const calls: Calls = { attempts: [], persisted: 0 };
   const picks = [node(), node()];
@@ -31,7 +40,7 @@ async function taskScreen(screen: Record<string, unknown>, ui: Record<string, un
     permissions: [], canMessage: false, liveUsage: null, model: {}, effort: {}, instructions: [], openFindings: [], gitMode: 'branch', auto: false, scenario: 'deliver', source: null, result: null,
     ticket: '', pipelineEdit: null, flow: [], fix: null, taskDir: '/ws/.orch/tasks/T-1', ...screen,
   };
-  const S = { route: { name: 'task', taskId: d.taskId }, overview: { defaults: null }, ui: { ...ui }, draft: {} };
+  const S = { route: { name: 'task', taskId: d.taskId }, overview: { defaults: null, ...overview }, ui: { ...ui }, draft: {} };
   const views: Record<string, { enter(r: unknown): Promise<void>; actions: Record<string, (el: unknown) => unknown>; changes: Record<string, (el: unknown) => unknown> }> = {};
   const known: Record<string, unknown> = {
     S,
@@ -53,6 +62,7 @@ async function taskScreen(screen: Record<string, unknown>, ui: Record<string, un
     SCENARIO_INFO: { deliver: { label: 'Deliver', icon: 'pr', hint: '' } },
     pipeEditors: {},
     pipeDragging: () => false,
+    ...shell,
   };
   // Every other helper of the shell draws nothing here: this test reads only what Fix in chat draws.
   const CS = new Proxy(known, { get: (t, k: string) => (k in t ? t[k] : () => '') });
