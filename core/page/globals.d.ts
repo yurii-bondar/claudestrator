@@ -134,6 +134,10 @@ interface UiState {
   treeDone?: Record<string, boolean>;
   /** What the rail's tree is filtered by. */
   treeFilter?: string;
+  /** The tasks with a tab over the screen, in the order they got one. */
+  taskTabs?: string[];
+  /** Running tasks whose tab was closed: it comes back with their next run, not while this one goes on. */
+  tabsClosed?: string[];
   taskTab?: string;
   pipeEdit?: boolean;
   /** A narrow task screen: the pipeline's steps listed, not only as segments. */

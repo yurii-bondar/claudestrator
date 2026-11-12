@@ -45,6 +45,8 @@ export interface Route {
   scenario?: string | undefined;
   focus?: string;
   section?: string;
+  /** A task's screen opened in a tab of its own ("Open in Tab"). */
+  tab?: boolean;
 }
 
 export interface Boot {

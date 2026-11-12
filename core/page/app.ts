@@ -304,8 +304,10 @@ interface Views {
   const views = {} as Views;
   let current: View | null = null;
 
-  async function go(route: Route) {
+  async function go({ tab, ...route }: Route) {
     if (current && current.leave) current.leave();
+    // "Open in Tab": the task gets its tab, then shows like any other.
+    if (tab && route.taskId) openTab(route.taskId);
     S.route = route;
     persist();
     // The host sends the output of the task on screen only.
@@ -470,6 +472,7 @@ interface Views {
               <span class="topbar-title" data-region="topbar-title"></span>
               <button class="icon-btn" data-action="new-task" aria-label="New task" title="New task (⌘⌥N)">${icon('plus')}</button>
             </header>
+            <div data-region="task-tabs"></div>
             <div data-region="global-alerts"></div>
             <div data-region="global-permissions"></div>
             <main id="view"></main>
@@ -514,6 +517,7 @@ interface Views {
     patch('nav', `${root}${tree && tasksOpen ? tree : ''}${NAV.filter((n) => n.group === 'setup').map((n) => item(n)).join('')}`);
     patch('topbar-title', esc(NAV.find((n) => n.name === active)?.label || 'Claudestrator'));
     patch('workspace', o && o.rootName ? esc(o.rootName) : '');
+    patch('task-tabs', taskTabs(o));
     patch('rail-foot', `${railHealth(o && o.health)}${limitsPanel(o && o.limits)}${accountSwitcher(o, Boolean(o && o.health && !o.health.checking && !healthProblem(o.health)))}`);
     renderGlobalPermissions();
     const a = o && o.account;
@@ -582,6 +586,59 @@ interface Views {
     const sections = o.sections.map((s) => treeSection(s, byId, filter)).join('');
     return `<input id="tree-filter" class="input sm tree-filter" type="search" placeholder="Filter tasks" aria-label="Filter tasks" data-input="tree-filter" value="${esc(S.ui.treeFilter ?? '')}">
       <div class="tree-sections">${sections || '<div class="tree-empty muted small">No task matches</div>'}</div>`;
+  }
+
+  // ---------- task tabs ----------
+
+  /**
+   * Tasks opened in a tab ("Open in Tab" on a task's menu) stay one click away over every screen, in the order you
+   * drag them to, until you close them. A task deleted since loses its tab.
+   */
+  function tabIds(o: Overview | null): string[] {
+    const ids = S.ui.taskTabs ?? [];
+    return o ? ids.filter((id) => o.tasks.some((t) => t.taskId === id)) : ids;
+  }
+
+  function setTabs(ids: string[]) {
+    S.ui.taskTabs = ids;
+    persist();
+    renderNav();
+  }
+
+  function openTab(taskId: string) {
+    const ids = tabIds(S.overview);
+    if (!ids.includes(taskId)) setTabs([...ids, taskId]);
+  }
+
+  /** Closes a tab; the task on screen whose tab closes gives way to the tab beside it, or to the Tasks page. */
+  function closeTab(taskId: string) {
+    const ids = tabIds(S.overview);
+    const at = ids.indexOf(taskId);
+    if (at === -1) return;
+    const rest = ids.filter((id) => id !== taskId);
+    setTabs(rest);
+    if (S.route.name !== 'task' || S.route.taskId !== taskId) return;
+    const next = rest[Math.min(at, rest.length - 1)];
+    go(next ? { name: 'task', taskId: next } : { name: 'home' });
+  }
+
+  function taskTab(t: Card) {
+    const on = S.route.name === 'task' && S.route.taskId === t.taskId;
+    const lead = t.status.group === 'running' ? '<span class="pulse"></span>' : icon(statusIcon(t));
+    return `<div class="task-tab tone-${t.status.tone} ${on ? 'active' : ''}" draggable="true" data-id="${esc(t.taskId)}">
+      <button class="tab-open" data-action="open-task" data-id="${esc(t.taskId)}" data-vscode-context="${taskMenu(t)}" title="${esc(`${t.title} · ${t.taskId} · ${t.status.label}`)}"${on ? ' aria-current="page"' : ''}>${lead}<span class="tab-title">${esc(t.title)}</span></button>
+      <button class="tab-x" data-action="close-tab" data-id="${esc(t.taskId)}" aria-label="${esc(`Close the tab of ${t.title}`)}" title="Close">${icon('x')}</button>
+    </div>`;
+  }
+
+  function taskTabs(o: Overview | null) {
+    if (!o || S.route.name === 'start') return '';
+    const byId = new Map(o.tasks.map((t) => [t.taskId, t]));
+    const tabs = tabIds(o).flatMap((id) => {
+      const t = byId.get(id);
+      return t ? [taskTab(t)] : [];
+    });
+    return tabs.length ? `<nav class="task-tabs" aria-label="Task tabs">${tabs.join('')}</nav>` : '';
   }
 
   /** An account's key, as the start screen's tiles and the aliases know it: its email, lowercase, or its folder. */
@@ -832,6 +889,49 @@ interface Views {
     pipeDrag = null;
     pipeClearDrop();
     if (list.join() !== before.join()) pipeSave(id, list, null);
+  });
+
+  // Task tabs are dragged into the order you want them in.
+  let tabDrag: string | null = null;
+  const tabDropAt = (e: DragEvent) => {
+    const tab = e.target instanceof Element ? e.target.closest<HTMLElement>('.task-tab') : null;
+    if (!tab || !tabDrag || tab.dataset.id === tabDrag) return null;
+    const r = tab.getBoundingClientRect();
+    return { tab, after: e.clientX > r.left + r.width / 2 };
+  };
+  const tabClearDrop = () => $$('.task-tab').forEach((t) => t.classList.remove('drop-before', 'drop-after'));
+  document.addEventListener('dragstart', (e) => {
+    const tab = e.target instanceof Element ? e.target.closest<HTMLElement>('.task-tab') : null;
+    if (!tab) return;
+    tabDrag = tab.dataset.id ?? null;
+    tab.classList.add('dragging');
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', tabDrag ?? '');
+  });
+  document.addEventListener('dragend', (e) => {
+    if (!(e.target instanceof Element) || !e.target.closest('.task-tab')) return;
+    tabDrag = null;
+    $$('.task-tab').forEach((t) => t.classList.remove('dragging'));
+    tabClearDrop();
+  });
+  document.addEventListener('dragover', (e) => {
+    const at = tabDropAt(e);
+    if (!at) return;
+    e.preventDefault();
+    tabClearDrop();
+    at.tab.classList.add(at.after ? 'drop-after' : 'drop-before');
+  });
+  document.addEventListener('drop', (e) => {
+    const at = tabDropAt(e);
+    if (!at || !tabDrag) return;
+    e.preventDefault();
+    const moved = tabDrag;
+    tabDrag = null;
+    tabClearDrop();
+    const before = tabIds(S.overview);
+    const list = before.filter((id) => id !== moved);
+    list.splice(list.indexOf(at.tab.dataset.id ?? '') + (at.after ? 1 : 0), 0, moved);
+    if (list.join() !== before.join()) setTabs(list);
   });
 
 
@@ -1652,6 +1752,7 @@ interface Views {
       setNavOpen(false);
       go({ name: 'task', taskId: el.dataset.id });
     },
+    'close-tab': (el) => closeTab(el.dataset.id ?? ''),
     run: async (el) => {
       await attempt('run', { taskId: el.dataset.id || S.route.taskId || '' });
     },
