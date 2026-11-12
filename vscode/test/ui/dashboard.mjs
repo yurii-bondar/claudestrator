@@ -414,3 +414,54 @@ test('settings: the library skill is added for you, shows as added, and can be o
   assert.match(await textOf(place('user')), /Added Open Remove/);
   assert.match(await textOf(place('project')), /Not added/, 'the project has its own');
 });
+
+test('task tabs: closing the tab on screen goes to the tab beside it, and the last one to the Tasks page', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false), card('t-c', 'Gamma', false)];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: [] }; window.CS.S.ui.taskTabs = ['t-a', 't-b', 't-c']; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  /** Shows a task's screen as the page would, without asking the host for it, then closes `close` with ×: where the page goes. */
+  const closeOn = (shown, close) => b.eval(`(() => {
+    window.CS.S.route = { name: 'task', taskId: '${shown}' };
+    window.CS.patch('task-tabs', '');
+    window.CS.loadOverview();
+    return new Promise((r) => setTimeout(() => {
+      window.CS.views.task.enter = async () => {};
+      document.querySelector('.task-tab[data-id="${close}"] .tab-x').click();
+      r(JSON.parse(JSON.stringify(window.CS.S.route)));
+    }, 200));
+  })()`);
+  assert.deepEqual(await closeOn('t-b', 't-b'), { name: 'task', taskId: 't-c' }, 'the tab to its right');
+  assert.deepEqual(await tabs(), ['t-a', 't-c']);
+  assert.deepEqual(await closeOn('t-c', 't-c'), { name: 'task', taskId: 't-a' }, 'the last one: the tab to its left');
+  assert.deepEqual(await closeOn('t-a', 't-a'), { name: 'home' }, 'no tab left: the Tasks page');
+  assert.deepEqual(await tabs(), []);
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
+});
+
+test('rail: without a workspace folder the rail says so', async () => {
+  await b.eval(`(async () => { window.__overview = { root: null, rootName: null }; await window.CS.loadOverview(); return true; })()`);
+  assert.equal(await textOf(`document.querySelector('[data-region="workspace"]')`), 'No folder open');
+  assert.equal(await b.eval(`!!document.querySelector('[data-region="workspace"] .ws-folder, [data-region="workspace"] .ws-repo')`), false, 'no folder or repo to name');
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
+  assert.match(await textOf(`document.querySelector('[data-region="workspace"]')`), new RegExp(path.basename(ws)));
+});
+
+test("Stay awake on a task's screen: what it has left, or as long as it runs, and actions for that task", async () => {
+  const timed = await b.eval(`window.CS.awakeMenu({ scope: 'task', choice: { minutes: 90 }, until: Date.now() + 90 * 60000 })`);
+  assert.match(timed, /Awake · 1h (29|30)m left/);
+  assert.match(timed, /data-action="task-awake" data-minutes="run"/);
+  assert.match(timed, /value="" data-change="task-awake-hours"/, 'no hours filled in: the minutes left are not a choice');
+  const unlimited = await b.eval(`window.CS.awakeMenu({ scope: 'task', choice: { minutes: null }, until: null })`);
+  assert.match(unlimited, /Awake while it runs/);
+  assert.match(unlimited, /aria-checked="true" data-action="task-awake" data-minutes="run"/);
+  assert.deepEqual(await b.eval(`[window.CS.awakePick('off'), window.CS.awakePick('run'), window.CS.awakePick('120'), window.CS.awakePick('999999'), window.CS.awakeHours('0'), window.CS.awakeHours('2.5')]`), [null, { minutes: null }, { minutes: 120 }, { minutes: 10080 }, null, { minutes: 150 }], 'a week at most');
+});
+
+test('task list: a task never run has Start, one stopped has Resume', async () => {
+  const notStarted = { ...card('t-new', 'CP-1164 [BE] RNG', false), phase: 'intake', status: { key: 'ready', label: 'Not started', tone: 'muted', group: 'stopped', resumable: true } };
+  const stopped = { ...card('t-old', 'Old', false), phase: 'stages', status: { key: 'ready', label: 'Ready to continue', tone: 'muted', group: 'stopped', resumable: true } };
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify([notStarted, stopped])}, sections: [] }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.task-card[data-id="t-new"]')`, 'the cards');
+  assert.match(await textOf(`document.querySelector('.task-card[data-id="t-new"] [data-action="run"]')`), /^Start$/);
+  assert.match(await textOf(`document.querySelector('.task-card[data-id="t-old"] [data-action="run"]')`), /^Resume$/);
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
+});
