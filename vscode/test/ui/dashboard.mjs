@@ -307,3 +307,26 @@ test('task tabs: none by default; "Open in Tab" adds one, a drag reorders them, 
 
   await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
 });
+
+test('task tabs: ⌘-click on a task of the rail opens it in a tab; a plain click opens it alone', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false)];
+  const sections = [{ key: 'ungrouped', kind: 'ungrouped', label: 'Ungrouped', taskIds: ['t-a', 't-b'] }];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: ${JSON.stringify(sections)} }; window.CS.S.ui.taskTabs = []; window.CS.S.ui.tasksOpen = true; window.CS.S.ui.treeOpen = { ungrouped: true }; window.CS.S.ui.treeDone = { ungrouped: true }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  /** Clicks a task of the rail with the mouse; `modifiers` 4 is ⌘ (Meta). */
+  const click = async (id, modifiers = 0) => {
+    const at = await b.eval(`(() => { const r = document.querySelector('.tree-task[data-id="${id}"]').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
+    const ev = { x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers };
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...ev });
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...ev });
+    await b.sleep(150);
+  };
+  await click('t-a');
+  assert.deepEqual(await tabs(), [], 'a plain click opens no tab');
+  await until(`!!document.querySelector('.tree-task[data-id="t-b"]')`, 'the rail again');
+  await click('t-b', 4);
+  await until(`document.querySelectorAll('.task-tabs .task-tab').length === 1`, 'the tab');
+  assert.deepEqual(await tabs(), ['t-b']);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
+});
