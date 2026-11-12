@@ -9,6 +9,7 @@ import * as view from '../../core/src/view';
 import type { OutputPush } from '../../core/src/view';
 import { exists } from '../../core/src/files';
 import { summarizeMcp } from '../../core/src/mcp';
+import * as skills from '../../core/src/skills';
 import * as cfg from '../../core/src/config';
 import * as backups from '../../core/src/backup';
 import * as libraries from '../../core/src/library';
@@ -24,7 +25,7 @@ import { parsePageRequest, openable, SESSION_ID } from '../../core/src/requests'
 import { fixProblem, fixableCheckpoint, fixDirs, fixPrompt, fixArgs } from '../../core/src/fix';
 import { settings, type Orchestrator } from './orchestrator';
 import type { Engine } from '../../core/src/engine';
-import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, TaskScreen } from '../../core/src/wire';
+import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, SkillScope, TaskScreen } from '../../core/src/wire';
 import type { Agent, Effort, ScenarioStep, Gate, TaskState } from '../../core/src/types';
 import type { ConfigLayer, RepoLayer } from '../../core/src/config';
 
@@ -351,6 +352,43 @@ class DashboardPanel implements RpcHandlers {
   async $setAwake({ taskId, awake }: Rpc['setAwake']['params']) {
     if (awake) this.orch.keepAwake.want(taskId, awake.minutes);
     else this.orch.keepAwake.drop(taskId);
+  }
+
+  // ---------- skills ----------
+
+  /** The skills folders a skill can go to: the account's the agents use (as you see it in the rail), and the project's. */
+  skillDirs(): { userDir: string; projectDir: string | null } {
+    const accountDir = this.orch.accountChoice().dir ?? path.join(os.homedir(), '.claude');
+    return { userDir: skills.skillsDirOf('user', { accountDir, workspace: null }), projectDir: this.root ? skills.skillsDirOf('project', { accountDir, workspace: this.root }) : null };
+  }
+
+  skillsDir(scope: SkillScope): string {
+    const { userDir, projectDir } = this.skillDirs();
+    if (scope === 'user') return userDir;
+    if (!projectDir) throw new Error('Open a folder to add a skill to its project');
+    return projectDir;
+  }
+
+  async $skills() {
+    return skills.listSkills(this.skillDirs());
+  }
+
+  async $addSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    await skills.addSkill({ name, skillsDir: this.skillsDir(scope) });
+  }
+
+  async $removeSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    const dir = path.join(this.skillsDir(scope), name);
+    const ok = await vscode.window.showWarningMessage(`Remove the skill ${name}?`, { modal: true, detail: `Its folder ${dir.replace(os.homedir(), '~')} is deleted, with any change you made to it. Add it again any time from Settings.` }, 'Remove');
+    if (ok !== 'Remove') return { removed: false };
+    await skills.removeSkill({ name, skillsDir: this.skillsDir(scope) });
+    return { removed: true };
+  }
+
+  async $openSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    const file = path.join(this.skillsDir(scope), name, 'SKILL.md');
+    if (!(await exists(file))) throw new Error(`${name} is not added there`);
+    await vscode.window.showTextDocument(vscode.Uri.file(file), { viewColumn: vscode.ViewColumn.Beside });
   }
 
   async $checkAwake() {

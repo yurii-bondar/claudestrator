@@ -41,6 +41,8 @@ interface ReposView extends View {
 interface SettingsView extends View {
   s: SettingsData | null;
   c: ConfigData | null;
+  /** The skills Claudestrator brings for Claude Code, and where each is added. */
+  k: SkillView[] | null;
   load(): Promise<void>;
   render(): void;
 }
@@ -756,6 +758,7 @@ interface Views {
     ...(DESKTOP ? ([['workspace', 'Claudestrator directory'], ['workdirs', 'Work directories']] as const) : ([['workspace', 'Workspace']] as const)),
     ['safety', 'Safety'],
     ['claude', 'Claude Code'],
+    ['skills', 'Skills'],
     ['notifications', 'Notifications'],
     ['config', 'Config files'],
   ];
@@ -785,9 +788,31 @@ interface Views {
         </section>`;
   }
 
+  /** Where a skill can go, as the Skills section says it. */
+  const SKILL_SCOPES = [
+    { scope: 'user', label: 'For me', hint: 'every project, in this account' },
+    { scope: 'project', label: 'This project', hint: 'its .claude/skills, for the team when committed' },
+  ] as const;
+
+  /** A skill, and in each skills folder whether it is there, with what to do about it. */
+  function skillHtml(k: SkillView) {
+    const place = ({ scope, label, hint }: (typeof SKILL_SCOPES)[number]) => {
+      const p = k[scope];
+      if (!p) return '';
+      const at = `data-name="${esc(k.name)}" data-scope="${scope}"`;
+      const state = p.state === 'current' ? `<span class="badge tone-ok">${icon('check')}Added</span>` : p.state === 'differs' ? `<span class="badge tone-warn" title="Not the version this Claudestrator brings: an older one, or changed by hand">${icon('alert')}Another version</span>` : '<span class="badge tone-muted">Not added</span>';
+      const actions = p.state === 'absent'
+        ? `<button class="btn sm primary" data-action="skill-add" ${at}>${icon('plus')}Add</button>`
+        : `${p.state === 'differs' ? `<button class="btn sm primary" data-action="skill-add" ${at} title="Replaces it with this version">${icon('refresh')}Update</button>` : ''}<button class="btn ghost sm" data-action="skill-open" ${at}>${icon('edit')}Open</button><button class="btn ghost sm" data-action="skill-remove" ${at}>${icon('trash')}Remove</button>`;
+      return `<div class="skill-place"><div class="skill-where"><b>${label}</b><span class="muted small">${hint}</span><code class="small" title="${esc(p.dir)}">${esc(p.dir.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, '~'))}</code></div>${state}<span class="skill-actions">${actions}</span></div>`;
+    };
+    return `<div class="skill-row"><div class="skill-head">${icon('sparkles')}<b>${esc(k.label)}</b><code class="small">${esc(k.name)}</code></div><p class="small">${esc(k.about)}</p>${SKILL_SCOPES.map(place).join('')}</div>`;
+  }
+
   views.settings = {
     s: null,
     c: null,
+    k: null,
     async enter(route) {
       $('#view')!.innerHTML = `<div class="page settings-page" data-region="settings"></div>`;
       await this.load();
@@ -797,9 +822,10 @@ interface Views {
       }
     },
     async load() {
-      const [s, c] = await Promise.all([call('settings'), call('config')]);
+      const [s, c, k] = await Promise.all([call('settings'), call('config'), call('skills')]);
       this.s = s;
       this.c = c;
+      this.k = k;
       this.render();
     },
     onConfig() {
@@ -879,6 +905,11 @@ interface Views {
           </div>
         </section>
 
+        <section class="card settings-card" id="sec-skills"><h3>${icon('sparkles')}Skills</h3>
+          <p class="muted small">Skills Claudestrator brings for Claude Code. Once added, your own Claude Code sessions (in a terminal, or the Claude Code extension) use one when its job comes up. The agents of tasks do not need them.</p>
+          ${(this.k || []).map(skillHtml).join('')}
+        </section>
+
         <section class="card settings-card" id="sec-notifications"><h3>${icon('bell')}Notifications</h3>
           <select class="input" data-change="set-setting" data-key="notifications">
             ${[['all', 'When a task needs you, finishes or fails'], ['needsYou', 'Only when a task needs you'], ['off', 'Never']].map(([v, l]) => `<option value="${v}" ${s.notifications === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -911,6 +942,15 @@ interface Views {
         views.settings.load();
       },
       'open-user-config': () => attempt('openConfig', { which: 'user' }),
+      'skill-add': async (el) => {
+        const scope = el.dataset.scope === 'project' ? 'project' : 'user';
+        if (await attempt('addSkill', { name: el.dataset.name, scope }, `${el.dataset.name} added ${scope === 'user' ? 'for you' : 'to this project'}: Claude Code picks it up in its next session`)) views.settings.load();
+      },
+      'skill-open': (el) => attempt('openSkill', { name: el.dataset.name, scope: el.dataset.scope === 'project' ? 'project' : 'user' }),
+      'skill-remove': async (el) => {
+        const r = await attempt('removeSkill', { name: el.dataset.name, scope: el.dataset.scope === 'project' ? 'project' : 'user' });
+        if (r && r.removed) views.settings.load();
+      },
       'settings-jump': (el) => {
         for (const b of $$('.settings-nav .nav-item')) b.classList.toggle('active', b === el);
         $(`#sec-${el.dataset.sec}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

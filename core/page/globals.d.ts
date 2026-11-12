@@ -47,6 +47,7 @@ type PickedRepos = import('../src/wire').PickedRepos;
 type RepoGates = import('../src/wire').RepoGates;
 type GateConfig = import('../src/wire').GateConfig;
 type SettingsData = import('../src/wire').SettingsData;
+type SkillView = import('../src/wire').SkillView;
 type McpData = import('../src/wire').McpData;
 type McpServerView = import('../src/wire').McpServerView;
 type Output = import('../src/types').Output;

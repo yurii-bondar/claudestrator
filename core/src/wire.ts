@@ -474,6 +474,27 @@ export type TaskScreen = TaskDetail & {
   awake: { until: number | null } | null;
 };
 
+// ---------- skills ----------
+
+/** Where a skill goes: the account's skills folder (every project), or the project's `.claude/skills`. */
+export type SkillScope = 'user' | 'project';
+
+/** A skill in one skills folder: not there, the version Claudestrator brings, or different (older, or edited). */
+export interface SkillPlace {
+  dir: string;
+  state: 'absent' | 'current' | 'differs';
+}
+
+/** A skill Claudestrator brings for Claude Code, and where it is. */
+export interface SkillView {
+  name: string;
+  label: string;
+  about: string;
+  user: SkillPlace;
+  /** Null without a workspace folder. */
+  project: SkillPlace | null;
+}
+
 // ---------- keeping the computer awake ----------
 
 /** What keeps the computer awake on this machine (core/src/awake.ts). */
@@ -970,6 +991,13 @@ export interface Rpc {
   start: { params: ComposerArgs & { awake?: AwakeChoice }; result: { taskId: string; created: boolean } };
   /** Keeps the computer awake while the task runs, or stops (null). */
   setAwake: { params: { taskId: string; awake: AwakeChoice | null }; result: Void };
+  skills: { params: void; result: SkillView[] };
+  /** Writes the skill into the scope's skills folder, over an older version. */
+  addSkill: { params: { name: string; scope: SkillScope }; result: Void };
+  /** Takes it out, once you confirm. */
+  removeSkill: { params: { name: string; scope: SkillScope }; result: { removed: boolean } };
+  /** Opens its SKILL.md in an editor. */
+  openSkill: { params: { name: string; scope: SkillScope }; result: Void };
   /** Looks for the tool again (after installing it). */
   checkAwake: { params: void; result: AwakeTool };
   /** Opens a terminal with the command that installs the tool, for you to run. */

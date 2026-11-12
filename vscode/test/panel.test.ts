@@ -359,6 +359,28 @@ test('panel: a task started to keep the computer awake does so, and the choice c
   assert.deepEqual(calls, [['want', 'T-1', 120], ['want', 'T-1', null], ['drop', 'T-1']], 'a task started without it keeps nothing awake');
 });
 
+test("panel: a skill goes into the account's skills folder or the project's, and leaves it once you confirm", async () => {
+  const account = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-acc-'));
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-ws-'));
+  const p = integrationsPanel({ root: ws, accountChoice: () => ({ dir: account }) });
+  const states = async () => (await p.$skills()).map((k) => [k.user.state, k.project?.state]);
+  assert.deepEqual(await states(), [['absent', 'absent']]);
+
+  await p.$addSkill({ name: 'claudestrator-library', scope: 'user' });
+  await p.$addSkill({ name: 'claudestrator-library', scope: 'project' });
+  assert.ok(fs.existsSync(path.join(account, 'skills', 'claudestrator-library', 'SKILL.md')), 'the account the agents use, ~/.claude by default');
+  assert.ok(fs.existsSync(path.join(ws, '.claude', 'skills', 'claudestrator-library', 'SKILL.md')));
+  assert.deepEqual(await states(), [['current', 'current']]);
+
+  let answer: string | undefined;
+  vscodeStub.window.showWarningMessage = async () => answer;
+  assert.deepEqual(await p.$removeSkill({ name: 'claudestrator-library', scope: 'project' }), { removed: false }, 'not without your yes');
+  answer = 'Remove';
+  assert.deepEqual(await p.$removeSkill({ name: 'claudestrator-library', scope: 'project' }), { removed: true });
+  assert.deepEqual(await states(), [['current', 'absent']]);
+  delete vscodeStub.window.showWarningMessage;
+});
+
 test('panel: Bitbucket is saved trimmed, and tested only once it can be', async () => {
   const saves: unknown[] = [];
   const p = integrationsPanel({ saveBitbucket: async (x: unknown) => void saves.push(x), bitbucket: () => null });
