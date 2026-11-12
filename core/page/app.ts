@@ -1506,7 +1506,7 @@ interface Views {
     const live = t.status.key === 'running' && t.live;
     let cta = '';
     if (t.status.key === 'waiting') cta = `<button class="btn primary sm" data-action="open-task" data-id="${t.taskId}">${icon('bell')}${esc(t.checkpoint?.id === 'approve-plan' ? 'Review plan' : t.checkpoint?.id === 'confirm-push' ? 'Review & push' : 'Decide')}</button>`;
-    else if (t.status.resumable) cta = `<button class="btn sm" data-action="run" data-id="${t.taskId}">${icon('play')}Resume</button>`;
+    else if (t.status.resumable) cta = `<button class="btn sm" data-action="run" data-id="${t.taskId}">${icon('play')}${t.status.key === 'ready' && t.phase === 'intake' ? 'Start' : 'Resume'}</button>`;
     else if (t.status.key === 'running') cta = `<button class="btn ghost sm" data-action="stop" data-id="${t.taskId}">${icon('stop')}Stop</button>`;
     const prs = Object.entries(t.prs || {});
     return `<article class="task-card tone-${t.status.tone}" data-action="open-task" data-id="${t.taskId}" tabindex="0">

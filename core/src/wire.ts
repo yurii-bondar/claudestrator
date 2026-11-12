@@ -431,6 +431,8 @@ export interface ReviewItemView {
 export interface CheckpointContext {
   format: 'markdown' | 'log';
   text: string;
+  /** After a split: the tasks the ticket's sub-tasks became. */
+  children?: string[];
   file?: string | undefined;
   repos?: { name: string; branch: string | null; base: string; files: number; dir: string }[];
   /** Before a push: what looks like a credential in what it would publish. */

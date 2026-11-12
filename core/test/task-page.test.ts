@@ -86,3 +86,18 @@ test('task page: posting sends the findings you unticked, and skipping sends non
   await skipping.view.actions.answer!({ ...button(), dataset: { option: 'skip' } });
   assert.deepEqual(sent(skipping.calls), [['answer', { taskId: 'api-pr-12', checkpointId: 'post-review', option: 'skip', at: 'now' }]]);
 });
+
+test("task page: a split ticket lists its sub-tasks, each opening its task, and asks whether it still works as one", async () => {
+  const { regions } = await taskScreen({
+    taskId: 'CP-1124',
+    source: { kind: 'jira', label: 'CP-1124', url: 'https://acme.atlassian.net/browse/CP-1124' },
+    status: { key: 'waiting', tone: 'warn', label: 'Sub-tasks added', resumable: false },
+    checkpointFull: { id: 'split', options: ['close', 'continue'], at: 'now' },
+    checkpointContext: { format: 'markdown', text: '', children: ['CP-1164', 'CP-1165'] },
+  });
+  const cp = regions['task-checkpoint']!;
+  assert.match(cp, /<h2>Sub-tasks added<\/h2>/);
+  assert.match(cp, /<div class="split-list"><button class="split-row" data-action="open-task" data-id="CP-1164">[\s\S]*?<b>CP-1164<\/b>[\s\S]*?<button class="split-row" data-action="open-task" data-id="CP-1165">/);
+  assert.match(cp, /data-option="close" data-kind="primary"[^>]*>[\s\S]*?Close this task<\/button>/);
+  assert.match(cp, /data-option="continue"[^>]*>[\s\S]*?Work on the whole ticket too<\/button>/);
+});

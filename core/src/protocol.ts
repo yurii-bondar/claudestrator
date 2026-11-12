@@ -53,6 +53,7 @@ const CHECKPOINT_OPTIONS: Record<CheckpointId, string[]> = {
   'hook-failure': ['retry', 'stop'],
   'confirm-push': ['push', 'push-comment', 'local'],
   'post-review': ['post', 'skip'],
+  split: ['close', 'continue'],
 };
 const JIRA_ONLY_OPTIONS = ['approve-post', 'push-comment'];
 

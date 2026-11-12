@@ -362,7 +362,7 @@ Everything a task did is on disk, in the workspace folder Claudestrator works in
 The events that tell the story:
 
 - \`task_created\`: the input, the source, the scenario, the pipeline (\`pipeline.stages\`), the context files, the git mode, the limits.
-- \`intake_completed\`: the ticket as read (\`spec\`); a task without a planner gets its repos here.
+- \`intake_completed\`: the ticket as read (\`spec\`); a task without a planner gets its repos here. With \`split\`, the ticket's sub-tasks became the tasks it names (\`children\`), in its \`group\`.
 - \`stage_started\` / \`stage_completed\` / \`stage_failed\`: each step, by \`agent\` and \`repo\`. \`stage_completed.artifact\` is its report's path; it carries the step's \`plan\`, \`verdict\`, \`readiness\` or \`audit\`, and \`gates\` (\`pass\`, \`fail\` or \`none\`). \`stage_failed.error\` says why, with \`blocked: true\` when the agent said it cannot go on.
 - \`gates_ran\`: a step's checks, with \`status\`, \`attempt\` and \`summary\`.
 - \`checkpoint_answered\`: the user's answer at a checkpoint, with the \`option\` and any \`feedback\`.
@@ -388,6 +388,7 @@ Logs and transcripts can be megabytes. Search them; do not read them whole: \`gr
 | hook-failure | the commit failed, mostly its git hook | \`commit_failed.output\` |
 | confirm-push | the work is committed and waits to be pushed | \`reviews/\`, the PR texts |
 | post-review | a PR review waits to be posted | \`reviews/\` |
+| split | the Jira ticket's sub-tasks (an epic's child issues) became tasks of their own, not started, in its group | \`intake_completed.split\`, the ticket's \`## Sub-tasks\` |
 
 ## Common causes
 

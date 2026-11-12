@@ -54,6 +54,7 @@ const CHECKPOINT_HINT: Record<string, string> = {
   'hook-failure': 'A git hook rejected the commit.',
   'confirm-push': 'Everything is committed locally. Push the branches and open draft PRs?',
   'post-review': 'The review is done. Post it to the pull request as comments?',
+  split: "The ticket's sub-tasks are tasks of their own now, in its group. Close this one, or have it work on the whole ticket too.",
 };
 
 const HUMAN_FINDINGS_HINT = "The blocking findings are about the repo's Claude Code or VS Code settings, which no agent changes: make the change yourself, then retry for another review.";
@@ -74,6 +75,7 @@ function hintOf(state: TaskState): string | undefined {
 /** The ticket's title, or before there is one the first line of what was typed, without its flags (`--auto`). */
 function titleOf(s: TaskState | null | undefined, taskId: string): string {
   if (s && s.spec && s.spec.title) return s.spec.title;
+  if (s && s.title) return s.title;
   if (!s || !s.input) return taskId;
   let text = s.input;
   try {
@@ -235,13 +237,14 @@ function baseStatus(state: TaskState | null, { running, elsewhere, error, corrup
       const serious = r.counts.critical! + r.counts.high!;
       return { key: 'done', label: r.findings.length ? `${r.findings.length} finding${r.findings.length === 1 ? '' : 's'}${serious ? ` · ${serious} serious` : ''}` : 'No findings', tone: r.counts.critical ? 'error' : serious ? 'warn' : 'ok', group: 'done' };
     }
-    const label = state!.outcome === 'published' ? 'PRs opened' : state!.outcome === 'local' ? 'Kept local' : state!.outcome === 'posted' ? 'Review posted' : state!.source.kind === 'pr' ? 'Reviewed' : 'Done';
+    const label = state!.outcome === 'published' ? 'PRs opened' : state!.outcome === 'local' ? 'Kept local' : state!.outcome === 'posted' ? 'Review posted' : state!.outcome === 'split' ? 'Split into sub-tasks' : state!.source.kind === 'pr' ? 'Reviewed' : 'Done';
     return { key: 'done', label, tone: 'ok', group: 'done' };
   }
   if (state!.status === 'stopped') return { key: 'stopped', label: state!.checkpoint ? `Stopped at: ${checkpointTitle(state!.checkpoint)}` : 'Stopped', tone: 'muted', group: 'stopped' };
   if (error) return { key: 'failed', label: 'Run failed', tone: 'error', group: 'attention' };
   if (state!.running.length) return { key: 'interrupted', label: 'Interrupted', tone: 'warn', group: 'attention' };
-  return { key: 'ready', label: 'Ready to continue', tone: 'muted', group: 'stopped' };
+  // A task added without a run (a ticket's sub-task) has not read its ticket yet.
+  return { key: 'ready', label: state!.phase === 'intake' ? 'Not started' : 'Ready to continue', tone: 'muted', group: 'stopped' };
 }
 
 /** What a card derives from the whole event log: the step timeline, the cost, the last stop. */

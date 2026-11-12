@@ -175,6 +175,7 @@ class EventStore {
 interface StartRequest {
   taskId?: string | undefined;
   input: string;
+  title?: string | undefined;
   source: Source;
   scenario?: string | undefined;
   scenarioName?: string | undefined;
@@ -339,6 +340,7 @@ class TaskService {
       type: 'task_created',
       taskId,
       input: req.input,
+      ...(req.title && { title: req.title }),
       source: req.source,
       ...(scenario !== 'deliver' && { scenario }),
       ...(req.scenarioName && { scenarioName: req.scenarioName, scenarioLabel: req.scenarioLabel }),

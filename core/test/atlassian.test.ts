@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { AtlassianClient, AtlassianError, IntakeError, classifyInput, otherSite, runIntake } from '../src/intake';
+import { AtlassianClient, AtlassianError, IntakeError, childIssues, classifyInput, otherSite, runIntake } from '../src/intake';
 import { Engine, type EngineOptions } from '../src/engine';
 import type { Source, TaskState } from '../src/types';
 
@@ -133,4 +133,43 @@ test('atlassian: a refused token, a missing access or a misspelt site says what 
   // A library that put the credentials into its text does not get them into the message.
   const leaky = new TypeError(`invalid header Basic ${header}`);
   assert.match((await failure([leaky], (c) => c.addComment('PROJ-1', 'hi'))).message, /invalid header Basic \*\*\*/);
+});
+
+test("atlassian: a ticket's sub-tasks (an epic's child issues) come with it, by one search; a refused search only means none", async () => {
+  const sleep = async (): Promise<void> => {};
+  const issue = { key: 'PROJ-805', fields: { summary: 'RNG', description: 'Seeds.', issuetype: { name: 'Story' } } };
+  const found = scripted([
+    { status: 200, body: issue },
+    {
+      status: 200,
+      body: {
+        issues: [
+          { key: 'PROJ-806', fields: { summary: '[BE] seeds', issuetype: { name: 'Sub-task' }, status: { statusCategory: { key: 'indeterminate' } } } },
+          { key: 'PROJ-808', fields: { summary: 'Spike', issuetype: { name: 'Sub-task' }, status: { statusCategory: { key: 'done' } } } },
+          { key: 'PROJ-806', fields: { summary: 'again' } },
+        ],
+      },
+    },
+  ]);
+  const spec = await runIntake('PROJ-805', { kind: 'jira', key: 'PROJ-805' }, { atlassian: new AtlassianClient(AUTH, { fetch: found.fetch, sleep }) });
+  assert.equal(spec.issueType, 'Story');
+  assert.deepEqual(spec.children, [
+    { key: 'PROJ-806', summary: '[BE] seeds', type: 'Sub-task', done: false },
+    { key: 'PROJ-808', summary: 'Spike', type: 'Sub-task', done: true },
+  ]);
+  assert.match(found.calls[0]!.url, /\/rest\/api\/3\/issue\/PROJ-805\?fields=.*issuetype/);
+  assert.equal(found.calls[1]!.url, `https://${AUTH.site}/rest/api/3/search/jql?jql=${encodeURIComponent('parent = PROJ-805 ORDER BY key ASC')}&fields=summary,issuetype,status&maxResults=100`);
+
+  const refused = scripted([{ status: 200, body: issue }, { status: 400, body: { errorMessages: ['no such field'] } }]);
+  const plain = await runIntake('PROJ-805', { kind: 'jira', key: 'PROJ-805' }, { atlassian: new AtlassianClient(AUTH, { fetch: refused.fetch, sleep }) });
+  assert.equal(plain.title, 'PROJ-805 RNG');
+  assert.deepEqual(plain.children, [], 'the ticket reads; it just does not split');
+});
+
+test('intake: child issues an agent hands back are narrowed: a Jira key each, once, done only when it says so', () => {
+  assert.deepEqual(childIssues([{ key: 'proj-1 ', summary: ' A ', type: 'Story' }, { key: 'PROJ-1' }, { key: '../etc' }, 'PROJ-2', null, { key: 'PROJ-3', done: 'yes', summary: 7 }]), [
+    { key: 'PROJ-1', summary: 'A', type: 'Story', done: false },
+    { key: 'PROJ-3', summary: '', type: '', done: false },
+  ]);
+  assert.deepEqual(childIssues('PROJ-1'), []);
 });
