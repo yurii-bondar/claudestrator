@@ -115,6 +115,7 @@ function created(e: Ev<'task_created'>): TaskState {
   return {
     taskId: e.taskId,
     input: e.input,
+    ...(e.title && { title: e.title }),
     source: e.source,
     /** deliver, readiness or audit; logs written before scenarios existed are deliveries. */
     scenario: e.scenario ?? 'deliver',
@@ -189,6 +190,12 @@ function intakeCompleted(s: TaskState, e: Ev<'intake_completed'>): Transition {
   s.spec = e.spec;
   s.phase = 'stages';
   setNext(s, firstRunnable(s, passSteps(s), 0), 'initial');
+  // Its sub-tasks became tasks in the ticket's group, which it joins: you choose whether it still works as one.
+  if (e.split) {
+    s.group = e.split.group;
+    s.children = e.split.children;
+    openCheckpoint(s, 'split', { at: e.at });
+  }
   return ok(s);
 }
 
@@ -326,6 +333,10 @@ function checkpointAnswered(s: TaskState, e: Ev<'checkpoint_answered'>): Transit
       break;
     case 'hook-failure':
       s.finishStep = 'commit';
+      break;
+    case 'split':
+      // Closed: its sub-tasks do the work. Else it goes on with its first step, as the whole ticket.
+      if (e.option === 'close') finish(s, 'split');
       break;
     case 'confirm-push':
       if (e.option === 'local') finish(s, 'local');

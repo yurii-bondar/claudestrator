@@ -41,6 +41,8 @@ interface ReposView extends View {
 interface SettingsView extends View {
   s: SettingsData | null;
   c: ConfigData | null;
+  /** The skills Claudestrator brings for Claude Code, and where each is added. */
+  k: SkillView[] | null;
   load(): Promise<void>;
   render(): void;
 }
@@ -54,7 +56,7 @@ interface McpView extends View {
   details: Record<string, true | string>;
   load(refresh?: boolean): Promise<void>;
   render(): void;
-  row(x: McpServerView, checking: boolean): string;
+  row(x: McpServerView, opts: { checking: boolean; hidden: boolean }): string;
 }
 
 // Merges into `Views` of globals.d.ts, which is where the shell reads these screens.
@@ -67,7 +69,7 @@ interface Views {
 }
 
 (function () {
-  const { call, attempt, toast, icon, esc, $, $$, plural, warnTip, OUTPUT_INFO, SCENARIO_INFO, agentColor, views, patch, outlineHtml, dur, ago, EFFORT_LABEL, modelChoices, libraryMove } = window.CS;
+  const { call, attempt, toast, icon, esc, $, $$, plural, warnTip, OUTPUT_INFO, SCENARIO_INFO, agentColor, views, patch, outlineHtml, dur, ago, EFFORT_LABEL, modelChoices, libraryMove, S, persist } = window.CS;
   const REPORT_SCENARIOS = ['readiness', 'audit'];
   const EFFORT_HINT: Record<string, string> = { '': 'the model\'s default', low: 'fastest, cheapest', medium: 'balanced', high: 'thorough', xhigh: 'very thorough', max: 'deepest, slowest' };
   const ALL_EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -756,6 +758,7 @@ interface Views {
     ...(DESKTOP ? ([['workspace', 'Claudestrator directory'], ['workdirs', 'Work directories']] as const) : ([['workspace', 'Workspace']] as const)),
     ['safety', 'Safety'],
     ['claude', 'Claude Code'],
+    ['skills', 'Skills'],
     ['notifications', 'Notifications'],
     ['config', 'Config files'],
   ];
@@ -785,9 +788,31 @@ interface Views {
         </section>`;
   }
 
+  /** Where a skill can go, as the Skills section says it. */
+  const SKILL_SCOPES = [
+    { scope: 'user', label: 'For me', hint: 'every project, in this account' },
+    { scope: 'project', label: 'This project', hint: 'its .claude/skills, for the team when committed' },
+  ] as const;
+
+  /** A skill, and in each skills folder whether it is there, with what to do about it. */
+  function skillHtml(k: SkillView) {
+    const place = ({ scope, label, hint }: (typeof SKILL_SCOPES)[number]) => {
+      const p = k[scope];
+      if (!p) return '';
+      const at = `data-name="${esc(k.name)}" data-scope="${scope}"`;
+      const state = p.state === 'current' ? `<span class="badge tone-ok">${icon('check')}Added</span>` : p.state === 'differs' ? `<span class="badge tone-warn" title="Not the version this Claudestrator brings: an older one, or changed by hand">${icon('alert')}Another version</span>` : '<span class="badge tone-muted">Not added</span>';
+      const actions = p.state === 'absent'
+        ? `<button class="btn sm primary" data-action="skill-add" ${at}>${icon('plus')}Add</button>`
+        : `${p.state === 'differs' ? `<button class="btn sm primary" data-action="skill-add" ${at} title="Replaces it with this version">${icon('refresh')}Update</button>` : ''}<button class="btn ghost sm" data-action="skill-open" ${at}>${icon('edit')}Open</button><button class="btn ghost sm" data-action="skill-remove" ${at}>${icon('trash')}Remove</button>`;
+      return `<div class="skill-place"><div class="skill-where"><b>${label}</b><span class="muted small">${hint}</span><code class="small" title="${esc(p.dir)}">${esc(p.dir.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, '~'))}</code></div>${state}<span class="skill-actions">${actions}</span></div>`;
+    };
+    return `<div class="skill-row"><div class="skill-head">${icon('sparkles')}<b>${esc(k.label)}</b><code class="small">${esc(k.name)}</code></div><p class="small">${esc(k.about)}</p>${SKILL_SCOPES.map(place).join('')}</div>`;
+  }
+
   views.settings = {
     s: null,
     c: null,
+    k: null,
     async enter(route) {
       $('#view')!.innerHTML = `<div class="page settings-page" data-region="settings"></div>`;
       await this.load();
@@ -797,9 +822,10 @@ interface Views {
       }
     },
     async load() {
-      const [s, c] = await Promise.all([call('settings'), call('config')]);
+      const [s, c, k] = await Promise.all([call('settings'), call('config'), call('skills')]);
       this.s = s;
       this.c = c;
+      this.k = k;
       this.render();
     },
     onConfig() {
@@ -879,6 +905,11 @@ interface Views {
           </div>
         </section>
 
+        <section class="card settings-card" id="sec-skills"><h3>${icon('sparkles')}Skills</h3>
+          <p class="muted small">Skills Claudestrator brings for Claude Code. Once added, your own Claude Code sessions (in a terminal, or the Claude Code extension) use one when its job comes up. The agents of tasks do not need them.</p>
+          ${(this.k || []).map(skillHtml).join('')}
+        </section>
+
         <section class="card settings-card" id="sec-notifications"><h3>${icon('bell')}Notifications</h3>
           <select class="input" data-change="set-setting" data-key="notifications">
             ${[['all', 'When a task needs you, finishes or fails'], ['needsYou', 'Only when a task needs you'], ['off', 'Never']].map(([v, l]) => `<option value="${v}" ${s.notifications === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -911,6 +942,15 @@ interface Views {
         views.settings.load();
       },
       'open-user-config': () => attempt('openConfig', { which: 'user' }),
+      'skill-add': async (el) => {
+        const scope = el.dataset.scope === 'project' ? 'project' : 'user';
+        if (await attempt('addSkill', { name: el.dataset.name, scope }, `${el.dataset.name} added ${scope === 'user' ? 'for you' : 'to this project'}: Claude Code picks it up in its next session`)) views.settings.load();
+      },
+      'skill-open': (el) => attempt('openSkill', { name: el.dataset.name, scope: el.dataset.scope === 'project' ? 'project' : 'user' }),
+      'skill-remove': async (el) => {
+        const r = await attempt('removeSkill', { name: el.dataset.name, scope: el.dataset.scope === 'project' ? 'project' : 'user' });
+        if (r && r.removed) views.settings.load();
+      },
       'settings-jump': (el) => {
         for (const b of $$('.settings-nav .nav-item')) b.classList.toggle('active', b === el);
         $(`#sec-${el.dataset.sec}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1004,7 +1044,11 @@ interface Views {
     render() {
       const m = this.m;
       if (!m) return;
-      const servers = [...m.servers].sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
+      const sorted = [...m.servers].sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
+      // The servers you hid are listed apart, folded, and counted nowhere.
+      const servers = sorted.filter((x) => !m.hidden.includes(x.name));
+      const hidden = sorted.filter((x) => m.hidden.includes(x.name));
+      const hiddenOpen = Boolean(S.ui.mcpHiddenOpen);
       const count = (st: string) => servers.filter((x) => x.state === st).length;
       patch(
         'mcp',
@@ -1020,15 +1064,17 @@ interface Views {
           <span><span class="mcp-dot s-failed"></span>error or needs sign-in · ${count('failed') + count('needs_auth')}</span>
         </div>
         ${m.error ? `<div class="banner error">${icon('alert')}<div class="grow"><b>The check failed.</b><pre class="log small">${esc(m.error)}</pre></div></div>` : ''}
-        ${servers.length ? `<div class="mcp-list">${servers.map((x) => this.row(x, m.checking)).join('')}</div>` : `<div class="empty-state">${icon('plug', 'big')}<h2>No MCP servers configured</h2><p>Add one in a terminal, e.g. <code>claude mcp add --transport http sentry https://mcp.sentry.dev/mcp</code>, then check again.</p></div>`}`
+        ${servers.length ? `<div class="mcp-list">${servers.map((x) => this.row(x, { checking: m.checking, hidden: false })).join('')}</div>` : hidden.length ? `<p class="muted small">Every server is hidden.</p>` : `<div class="empty-state">${icon('plug', 'big')}<h2>No MCP servers configured</h2><p>Add one in a terminal, e.g. <code>claude mcp add --transport http sentry https://mcp.sentry.dev/mcp</code>, then check again.</p></div>`}
+        ${hidden.length ? `<button class="mcp-hidden-fold" data-action="mcp-hidden-fold" aria-expanded="${hiddenOpen}">${icon('chevron', 'chev')}<span>Hidden · ${hidden.length}</span><span class="muted small">their errors count in no warning; Show brings one back</span></button>
+          ${hiddenOpen ? `<div class="mcp-list mcp-hidden">${hidden.map((x) => this.row(x, { checking: m.checking, hidden: true })).join('')}</div>` : ''}` : ''}`
       );
     },
-    row(x, checking) {
+    row(x, { checking, hidden }) {
       const st = MCP_STATE[x.state] || MCP_INSTALLED;
       const detailText = x.disabled ? 'disabled for this project' : x.pending ? 'waiting for your approval in Claude Code' : x.detail && x.detail.toLowerCase() !== st.label.toLowerCase() ? x.detail : '';
       const label = x.missing ? 'Not loaded' : st.label;
       const plugin = x.name.startsWith('plugin:') ? x.name.split(':')[1] : null;
-      const bad = x.state === 'failed' || x.state === 'needs_auth';
+      const bad = !hidden && (x.state === 'failed' || x.state === 'needs_auth');
       const login = x.login;
       const opened = this.details[x.name];
       return `<div class="mcp-row s-${x.state}">
@@ -1041,7 +1087,8 @@ interface Views {
           <span class="mcp-state s-${x.state} ${x.missing ? 'missing' : ''}">${esc(label)}${detailText ? `<span class="muted"> · ${esc(detailText)}</span>` : ''}</span>
           <span class="mcp-actions">
             ${x.canLogin ? (login ? `<button class="btn sm" data-action="mcp-show-login" data-name="${esc(x.name)}">${icon('terminal')}Show terminal</button><button class="btn ghost sm" data-action="mcp-cancel" data-name="${esc(x.name)}">${icon('x')}Cancel</button>` : `<button class="btn ${bad ? 'primary' : 'ghost'} sm" data-action="mcp-login" data-name="${esc(x.name)}" title="Runs claude mcp login: the provider's sign-in page opens in your browser">${icon('key')}${x.state === 'connected' ? 'Sign in again' : 'Sign in'}</button>`) : ''}
-            <button class="btn ghost sm" data-action="mcp-details" data-name="${esc(x.name)}">${icon(opened ? 'x' : 'info')}${opened ? 'Hide' : 'Details'}</button>
+            <button class="btn ghost sm" data-action="mcp-details" data-name="${esc(x.name)}">${icon(opened ? 'x' : 'info')}${opened ? 'Hide details' : 'Details'}</button>
+            <button class="btn ghost sm" data-action="mcp-hide" data-name="${esc(x.name)}" data-hidden="${hidden ? '0' : '1'}" title="${hidden ? 'Show it, and count its errors again' : 'Hide it: its errors count in no warning. The agents still have it.'}">${icon(hidden ? 'eye' : 'eyeOff')}${hidden ? 'Show' : 'Hide'}</button>
           </span>
         </div>
         ${login ? `<div class="mcp-login"><span class="spinner xs"></span> A terminal is running <code>claude mcp login ${esc(x.name)}</code>. Finish the sign-in in the browser it opens; if the terminal asks for the redirect URL, paste it there. The list checks again when it is done.</div>` : ''}
@@ -1088,6 +1135,16 @@ interface Views {
         el.disabled = true;
         if ((await attempt('mcpLogin', { name: el.dataset.name })) !== undefined) views.mcp.load();
         else el.disabled = false;
+      },
+      'mcp-hide': async (el) => {
+        if ((await attempt('setMcpHidden', { name: el.dataset.name, hidden: el.dataset.hidden === '1' })) === undefined) return;
+        // The rail's warning and the nav badge count the shown servers only.
+        await views.mcp.refresh!();
+      },
+      'mcp-hidden-fold': () => {
+        S.ui.mcpHiddenOpen = !S.ui.mcpHiddenOpen;
+        persist();
+        views.mcp.render();
       },
       'mcp-show-login': (el) => attempt('mcpShowLogin', { name: el.dataset.name }),
       'mcp-cancel': async (el) => {

@@ -23,6 +23,14 @@ test('requests: only a known request with parameters of its shape reaches a hand
   assert.ok(bad && !bad.ok);
   assert.match(bad.error, /checkpointId: expected a string/);
   assert.match(bad.error, /option: required/);
+
+  assert.ok(parsePageRequest({ type: 'req', id: 7, method: 'setMcpHidden', params: { name: 'claude.ai Asana', hidden: true } })?.ok);
+  assert.ok(!parsePageRequest({ type: 'req', id: 8, method: 'setMcpHidden', params: { name: 'jenkins', hidden: 'yes' } })?.ok, 'hidden or shown, nothing else');
+
+  assert.ok(parsePageRequest({ type: 'req', id: 9, method: 'start', params: { text: 'fix it', awake: { minutes: null } } })?.ok, 'awake while it runs');
+  assert.ok(parsePageRequest({ type: 'req', id: 10, method: 'setAwake', params: { taskId: 'PROJ-1', awake: { minutes: 120 } } })?.ok);
+  assert.ok(parsePageRequest({ type: 'req', id: 11, method: 'setAwake', params: { taskId: 'PROJ-1', awake: null } })?.ok, 'off');
+  for (const minutes of [0, 7 * 24 * 60 + 1, 1.5, '60']) assert.ok(!parsePageRequest({ type: 'req', id: 12, method: 'setAwake', params: { taskId: 'PROJ-1', awake: { minutes } } })?.ok, String(minutes));
 });
 
 test('requests: the page opens only web links outside the editor', async () => {

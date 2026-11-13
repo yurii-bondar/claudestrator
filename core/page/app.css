@@ -16,14 +16,15 @@
   --cs-text-primary: var(--vscode-foreground);
   --cs-text-secondary: var(--vscode-descriptionForeground);
   --cs-text-link: var(--vscode-textLink-foreground);
-  --cs-text-on-accent: var(--vscode-button-foreground);
+  --cs-text-on-accent: var(--cs-brand-on);
   /* borders */
   --cs-border-default: var(--vscode-panel-border, rgba(128, 128, 128, 0.22));
   --cs-border-strong: var(--vscode-contrastBorder, rgba(128, 128, 128, 0.38));
   --cs-border-focus: var(--vscode-focusBorder);
-  /* controls: inside an IDE the actions take the host's button colours; the brand colour stays in the logo */
-  --cs-accent-default: var(--vscode-button-background);
-  --cs-accent-hover: var(--vscode-button-hoverBackground);
+  /* controls: the primary actions wear the brand colour in every host, as the desktop app's do; high contrast keeps
+     the theme's own (below) */
+  --cs-accent-default: var(--cs-brand-button);
+  --cs-accent-hover: var(--cs-brand-button-hover);
   --cs-accent-border: var(--vscode-button-border, transparent);
   --cs-button-secondary-bg: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.16));
   --cs-button-secondary-fg: var(--vscode-button-secondaryForeground, var(--cs-text-primary));
@@ -56,6 +57,9 @@
   --cs-brand-from: #e3896a;
   --cs-brand-to: #bd5b3a;
   --cs-brand-on: #faf9f5;
+  /* a primary button: the brand darkened until white text on it reads (4.5:1 and more) */
+  --cs-brand-button: #b0522f;
+  --cs-brand-button-hover: #a24826;
   /* type: the host's family and base size, one ramp of seven sizes and three weights */
   --cs-font-ui: var(--vscode-font-family);
   --cs-font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
@@ -150,6 +154,10 @@ body.vscode-high-contrast {
   --cs-status-err-border: var(--cs-status-err-text);
   --cs-status-severe-border: var(--cs-status-severe-text);
   --cs-accent-border: var(--vscode-button-border, var(--vscode-contrastBorder));
+  /* the theme's button colours, made to be told apart in it, not the brand's */
+  --cs-accent-default: var(--vscode-button-background);
+  --cs-accent-hover: var(--vscode-button-hoverBackground);
+  --cs-text-on-accent: var(--vscode-button-foreground);
 }
 /* Hover has no background in high contrast themes: it shows as a dashed outline. */
 body.vscode-high-contrast :is(.btn, .icon-btn, .nav-item, .task-card, .tab, .menu button, .agent-chip, .st):hover {
@@ -225,9 +233,10 @@ button.rail-health { width: 100%; padding: 2px 0; border: 0; background: transpa
 .logo { width: 28px; height: 28px; flex: none; border-radius: var(--cs-radius-md); display: grid; place-items: center; color: var(--cs-brand-on); background: linear-gradient(135deg, var(--cs-brand-from), var(--cs-brand-to)); box-shadow: 0 2px 8px color-mix(in srgb, var(--cs-brand-to) 35%, transparent); }
 .logo .ic { width: 17px; height: 17px; }
 .logo .logo-mark { width: 22px; height: 22px; }
-.brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.brand-name { font-weight: var(--cs-weight-strong); font-size: var(--cs-font-md); }
-.brand-sub { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-name { min-width: 0; font-weight: var(--cs-weight-strong); font-size: var(--cs-font-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The workspace's folder, where the rail starts: the editor's tab already names Claudestrator. */
+.ws-icon { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--cs-radius-md); background: var(--cs-bg-raised); border: 1px solid var(--cs-border-default); color: var(--cs-text-secondary); }
+.ws-icon .ic { width: 16px; height: 16px; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 /* The tasks scroll; Setup and the footer stay under them. */
 /* The tasks and Setup scroll together; the footer stays at the bottom. */
@@ -273,6 +282,22 @@ button.rail-health { width: 100%; padding: 2px 0; border: 0; background: transpa
 .nb { display: inline-flex; align-items: center; gap: 4px; font-size: var(--cs-font-xs); font-weight: var(--cs-weight-strong); padding: 0 6px; border-radius: var(--cs-radius-lg); line-height: 17px; }
 .nb.warn { background: var(--cs-status-warn-tint); color: var(--cs-status-warn-text); box-shadow: inset 0 0 0 1px var(--cs-status-warn-border); }
 .nb.run { background: color-mix(in srgb, var(--cs-status-run-text) 22%, transparent); color: var(--cs-status-run-text); }
+/* Tasks opened in a tab, over every screen, as an editor's tabs: dragged to reorder, closed with ×. */
+.task-tabs { display: flex; overflow-x: auto; background: var(--cs-bg-surface); border-bottom: 1px solid var(--cs-border-default); scrollbar-width: thin; }
+.task-tab { display: flex; align-items: center; flex: none; max-width: 240px; border-right: 1px solid var(--cs-border-default); box-shadow: inset 0 2px 0 0 transparent; color: var(--cs-text-secondary); }
+.task-tab:hover { background: var(--cs-bg-hover); color: var(--cs-text-primary); }
+.task-tab.active { background: var(--cs-bg-app); color: var(--cs-text-primary); box-shadow: inset 0 2px 0 0 var(--cs-border-focus); }
+.task-tab.dragging { opacity: 0.35; }
+.task-tab.drop-before { box-shadow: inset 3px 0 0 0 var(--cs-border-focus); }
+.task-tab.drop-after { box-shadow: inset -3px 0 0 0 var(--cs-border-focus); }
+.tab-open { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px 4px 7px var(--cs-space-3); border: 0; background: transparent; color: inherit; font: inherit; font-size: var(--cs-font-sm); cursor: pointer; }
+.tab-open > .ic { width: 14px; height: 14px; color: var(--tone, var(--cs-text-secondary)); }
+.task-tab.tone-muted .tab-open > .ic { color: var(--cs-text-secondary); }
+.tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-x { display: grid; place-items: center; flex: none; width: 20px; height: 20px; margin-right: 6px; padding: 0; border: 0; border-radius: var(--cs-radius-sm); background: transparent; color: inherit; cursor: pointer; visibility: hidden; }
+.tab-x .ic { width: 13px; height: 13px; }
+.tab-x:hover { background: var(--cs-bg-hover); }
+.task-tab:hover .tab-x, .task-tab.active .tab-x, .tab-x:focus-visible { visibility: visible; }
 /* The top bar only shows in a narrow panel, where the rail opens as a sheet from its menu button. */
 .topbar { display: none; }
 @media (max-width: 760px) {
@@ -882,6 +907,23 @@ span.gate-chip { cursor: default; }
   .settings-card { scroll-margin-top: 56px; }
 }
 .tool-check { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; }
+/* Settings → Skills: a skill, then each skills folder it can go to, with what is there. */
+/* A split ticket's sub-tasks, under its question: each opens its task. */
+.split-list { display: flex; flex-direction: column; gap: 2px; margin: var(--cs-space-2) 0; }
+.split-row { display: flex; align-items: center; gap: var(--cs-space-2); width: 100%; padding: 6px var(--cs-space-3); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-md); background: var(--cs-bg-raised); color: var(--cs-text-primary); font: inherit; font-size: var(--cs-font-sm); text-align: left; cursor: pointer; }
+.split-row:hover { border-color: var(--cs-border-focus); }
+.split-row > .ic { width: 14px; height: 14px; color: var(--cs-kind-story-text); }
+.split-row .muted { margin-left: auto; flex: none; }
+.skill-row { display: flex; flex-direction: column; gap: var(--cs-space-2); padding: var(--cs-space-3) 0; border-top: 1px solid var(--cs-border-default); }
+.skill-row:first-of-type { border-top: 0; }
+.skill-head { display: flex; align-items: center; gap: var(--cs-space-2); }
+.skill-head > .ic { color: var(--cs-brand); }
+.skill-row > p { margin: 0; }
+.skill-place { display: flex; align-items: center; gap: var(--cs-space-3); flex-wrap: wrap; padding: var(--cs-space-2) var(--cs-space-3); background: var(--cs-bg-raised); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-md); }
+.skill-where { display: flex; align-items: baseline; gap: var(--cs-space-2); flex: 1; min-width: 0; flex-wrap: wrap; }
+.skill-where code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.skill-place .badge .ic { width: 12px; height: 12px; }
+.skill-actions { display: flex; gap: var(--cs-space-1); }
 .tool-check.ok > .ic { color: var(--cs-status-ok-text); }
 .tool-check.bad > .ic, .tool-check.bad b { color: var(--cs-status-err-text); }
 .tool-check > span:not(.fix) { color: var(--cs-text-secondary); word-break: break-all; flex: 1; min-width: 0; }
@@ -991,6 +1033,13 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .mcp-state.s-installed { color: var(--cs-status-warn-text); }
 .mcp-state.s-failed, .mcp-state.s-needs_auth { color: var(--cs-status-err-text); }
 .mcp-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+/* The servers you hid: folded under one row, dimmed when listed. */
+.mcp-hidden-fold { display: flex; align-items: center; gap: var(--cs-space-2); width: 100%; margin-top: var(--cs-space-4); padding: var(--cs-space-2) 0; border: 0; background: transparent; color: var(--cs-text-primary); font: inherit; font-weight: var(--cs-weight-strong); text-align: left; cursor: pointer; }
+.mcp-hidden-fold .muted { font-weight: var(--cs-weight-regular); }
+.mcp-hidden-fold .chev { width: 14px; height: 14px; transition: transform var(--cs-duration); }
+.mcp-hidden-fold[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.mcp-hidden .mcp-row { opacity: 0.65; border-color: var(--cs-border-default); }
+.mcp-hidden .mcp-row:hover, .mcp-hidden .mcp-row:focus-within { opacity: 1; }
 .mcp-login { margin-top: 8px; padding: 8px 10px; border-radius: var(--cs-radius-md); background: color-mix(in srgb, var(--cs-status-run-text) 8%, transparent); border: 1px solid color-mix(in srgb, var(--cs-status-run-text) 35%, transparent); font-size: var(--cs-font-sm); }
 .mcp-login .log { margin-top: 6px; }
 .mcp-state.missing { color: var(--cs-text-secondary); }
@@ -1017,6 +1066,21 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .sc-current { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 12px; border-radius: var(--cs-radius-lg); border: 1px solid var(--cs-border-strong); background: var(--cs-bg-app); color: var(--cs-text-primary); font: inherit; font-size: var(--cs-font-sm); font-weight: var(--cs-weight-strong); cursor: pointer; white-space: nowrap; }
 .sc-current:hover { border-color: var(--cs-border-focus); }
 .sc-current .ic { width: 13px; height: 13px; }
+/* Keeping the computer awake while a task runs: the composer's and the task screen's menu. */
+.awake-btn.picked { border-color: var(--cs-status-run-border); color: var(--cs-status-run-text); }
+.awake-btn.bad { border-color: var(--cs-status-warn-border); color: var(--cs-status-warn-text); }
+.awake-menu { min-width: 320px; max-width: 380px; }
+.awake-menu .menu-title { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); padding: 4px 10px 6px; }
+.awake-custom { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 36px; font-size: var(--cs-font-sm); }
+.awake-custom .input { width: 80px; }
+.awake-tool { flex-wrap: wrap; font-size: var(--cs-font-sm); }
+.awake-tool .acc-row { flex: 1 1 calc(100% - 24px); min-width: 0; }
+.awake-tool .btn:first-of-type { margin-left: 20px; }
+.awake-tool code { align-self: flex-start; margin-top: 4px; font-size: var(--cs-font-xs); white-space: nowrap; }
+.awake-tool.ok > .ic { color: var(--cs-status-ok-text); }
+.awake-tool.bad > .ic { color: var(--cs-status-warn-text); }
+.awake-tool .btn { width: auto; }
+.menu-note.muted .ic { flex: none; }
 .sc-caret { color: var(--cs-text-secondary); font-size: var(--cs-font-xs); }
 .sc-menu { width: 380px; max-width: calc(100vw - 40px); padding: 4px; }
 .sc-item { display: flex; align-items: stretch; gap: 2px; border-radius: var(--cs-radius-md); }

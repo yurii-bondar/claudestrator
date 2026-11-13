@@ -24,7 +24,7 @@ const byId = obj({ id });
 const task = obj({ taskId: id });
 const gate = obj({ name: T.str(1), cmd: T.str(1), 'dir?': T.str(), 'when?': T.str(), 'timeout?': T.int(1, 24 * 60 * 60) });
 const addedRepo = obj({ name: T.str(1), path: T.str(1), 'role?': T.str(), 'baseBranch?': T.str(), 'stack?': T.arr(T.str()), 'gates?': T.arr(gate) });
-const composer = obj({
+const composerShape = {
   'text?': T.str(),
   'auto?': T.bool(),
   'no?': T.arr(T.str()),
@@ -33,7 +33,10 @@ const composer = obj({
   'scenario?': T.str(),
   'group?': T.str(),
   'instructions?': T.arr(T.str(1)),
-});
+};
+const composer = obj(composerShape);
+/** At most a week; null: as long as the task runs. */
+const awake = obj({ minutes: nullable(T.int(1, 7 * 24 * 60)) });
 
 /** One checker per request; the compiler makes sure a new request gets one. */
 const PARAMS: { [M in keyof Rpc]: Check } = {
@@ -79,6 +82,7 @@ const PARAMS: { [M in keyof Rpc]: Check } = {
   testBitbucket: none,
   mcp: obj({ 'refresh?': T.bool() }),
   mcpLogin: named,
+  setMcpHidden: obj({ name: T.str(1, 200), hidden: T.bool() }),
   mcpShowLogin: named,
   mcpCancelLogin: named,
   mcpDetails: named,
@@ -103,7 +107,14 @@ const PARAMS: { [M in keyof Rpc]: Check } = {
   openExternal: obj({ url: T.re(/^https?:\/\//i, 'only http(s) links open outside the editor') }),
   copy: obj({ text: T.str() }),
   preview: composer,
-  start: composer,
+  start: obj({ ...composerShape, 'awake?': awake }),
+  setAwake: obj({ taskId: id, awake: nullable(awake) }),
+  checkAwake: none,
+  skills: none,
+  addSkill: obj({ name: id, scope: T.oneOf(['user', 'project']) }),
+  removeSkill: obj({ name: id, scope: T.oneOf(['user', 'project']) }),
+  openSkill: obj({ name: id, scope: T.oneOf(['user', 'project']) }),
+  installAwake: none,
   saveScenario: obj({ 'id?': T.str(), 'label?': T.str(), 'description?': T.str(), 'agents?': T.arr(obj({ name: T.str(1), 'model?': T.str(), 'effort?': T.oneOf(EFFORTS), 'instructions?': T.str(), 'instructionsFile?': T.str(1), ...stepBlocks })), 'intake?': obj({ 'model?': T.str(1), 'effort?': T.oneOf(EFFORTS) }) }),
   editStepInstructions: obj({ scenario: id, agent: T.str(1) }),
   previewScenario: obj({ agents: T.arr(obj({ name: T.str(1), ...stepBlocks })), 'auto?': T.bool() }),

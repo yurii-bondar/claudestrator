@@ -15,6 +15,8 @@ type Live = import('../src/wire').Live;
 type TaskSource = import('../src/wire').TaskSource;
 type PermissionRequest = import('../src/wire').PermissionRequest;
 type Card = import('../src/wire').Card;
+type AwakeTool = import('../src/wire').AwakeTool;
+type AwakeChoice = import('../src/wire').AwakeChoice;
 type TaskSection = import('../src/wire').TaskSection;
 type AgentSummary = import('../src/wire').AgentSummary;
 type ConfigSummary = import('../src/wire').ConfigSummary;
@@ -45,6 +47,7 @@ type PickedRepos = import('../src/wire').PickedRepos;
 type RepoGates = import('../src/wire').RepoGates;
 type GateConfig = import('../src/wire').GateConfig;
 type SettingsData = import('../src/wire').SettingsData;
+type SkillView = import('../src/wire').SkillView;
 type McpData = import('../src/wire').McpData;
 type McpServerView = import('../src/wire').McpServerView;
 type Output = import('../src/types').Output;
@@ -100,6 +103,8 @@ interface Draft {
   group: string;
   /** The ids of the instructions the task's agents follow. */
   instructions: string[];
+  /** Whether the task keeps the computer awake while it runs, and how long at most. */
+  awake: AwakeChoice | null;
 }
 
 /** The group or instruction being written in the composer; without `id` it is a new one. */
@@ -132,8 +137,14 @@ interface UiState {
   treeOpen?: Record<string, boolean>;
   /** Sections whose finished tasks are listed, not folded into one row. */
   treeDone?: Record<string, boolean>;
+  /** The Integrations page lists the MCP servers you hid. */
+  mcpHiddenOpen?: boolean;
   /** What the rail's tree is filtered by. */
   treeFilter?: string;
+  /** The tasks with a tab over the screen, in the order they got one. */
+  taskTabs?: string[];
+  /** Running tasks whose tab was closed: it comes back with their next run, not while this one goes on. */
+  tabsClosed?: string[];
   taskTab?: string;
   pipeEdit?: boolean;
   /** A narrow task screen: the pipeline's steps listed, not only as segments. */
@@ -291,6 +302,13 @@ interface CSApi {
   autosize(ta: HTMLElement | null): void;
   shake(el: HTMLElement | null): void;
   refreshSoon(): void;
+  /** The menu that keeps the computer awake while a task runs; its actions are `<scope>-awake` and `<scope>-awake-hours`. */
+  awakeMenu(opts: { scope: 'draft' | 'task'; choice: AwakeChoice | null; until?: number | null }): string;
+  /** A pick of that menu (`off`, `run` or minutes) as a choice. */
+  awakePick(v: string | undefined): AwakeChoice | null;
+  /** Hours typed in that menu as a choice; null for none or nonsense. */
+  awakeHours(v: string): AwakeChoice | null;
+  closeMenus(): void;
   actions: Record<string, ActionFn>;
   changes: Record<string, FieldFn>;
   inputs: Record<string, FieldFn>;

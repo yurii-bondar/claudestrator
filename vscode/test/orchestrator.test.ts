@@ -15,7 +15,41 @@ const loader = Module as unknown as { _load: (request: string, ...rest: unknown[
 const load = loader._load;
 /** What orchestrator.ts gets as `vscode`: settings, read from `setting` (a test sets the ones it needs). */
 let setting: Record<string, unknown> = {};
-const vscodeStub = { workspace: { getConfiguration: () => ({ get: (key: string) => setting[key] }) } };
+/** VS Code's event emitter, as far as the orchestrator uses it. */
+class EventEmitter<T> {
+  listeners: ((e: T) => void)[] = [];
+  event = (fn: (e: T) => void) => (this.listeners.push(fn), { dispose: () => void (this.listeners = this.listeners.filter((l) => l !== fn)) });
+  fire(e: T): void {
+    for (const l of this.listeners) l(e);
+  }
+  dispose(): void {
+    this.listeners = [];
+  }
+}
+/** A terminal a test sees opened: its name, what was typed into it. */
+interface FakeTerminal {
+  name: string;
+  sent: string[];
+  shown: boolean;
+}
+const terminals: FakeTerminal[] = [];
+const closeListeners: ((t: FakeTerminal) => void)[] = [];
+const watcher = { onDidChange() {}, onDidCreate() {}, onDidDelete() {}, dispose() {} };
+const vscodeStub = {
+  workspace: { getConfiguration: () => ({ get: (key: string) => setting[key] }), workspaceFolders: [] as { uri: { fsPath: string } }[], createFileSystemWatcher: () => watcher, onDidChangeConfiguration: () => ({ dispose() {} }) },
+  window: {
+    createTerminal: ({ name }: { name: string }) => {
+      const t: FakeTerminal & { show(): void; sendText(text: string): void } = { name, sent: [], shown: false, show: () => void (t.shown = true), sendText: (text: string) => void t.sent.push(text) };
+      terminals.push(t);
+      return t;
+    },
+    onDidCloseTerminal: (fn: (t: FakeTerminal) => void) => (closeListeners.push(fn), { dispose: () => void closeListeners.splice(closeListeners.indexOf(fn), 1) }),
+  },
+  EventEmitter,
+  RelativePattern: class {},
+  Uri: { file: (fsPath: string) => ({ fsPath }) },
+  ThemeIcon: class {},
+};
 loader._load = function (this: unknown, request: string, ...rest: unknown[]) {
   return request === 'vscode' ? vscodeStub : load.call(this, request, ...rest);
 };
@@ -156,4 +190,109 @@ test('orchestrator: removing an account signs out in each of its folders, leaves
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/** Waits for `ok`, a few seconds at most. */
+async function until(ok: () => boolean, what: string): Promise<void> {
+  for (let t = 0; t < 5000; t += 25) {
+    if (ok()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** The tool this system keeps the computer awake with, as a script in a folder of its own: it writes its arguments and when it is stopped. */
+function fakeAwakeTool() {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-awake-bin-'));
+  const log = path.join(bin, 'held.log');
+  const name = process.platform === 'darwin' ? 'caffeinate' : 'systemd-inhibit';
+  fs.writeFileSync(path.join(bin, name), `#!/bin/sh\necho "$@" > "${log}"\ntrap 'echo stopped >> "${log}"; exit 0' TERM\nwhile :; do sleep 0.1; done\n`, { mode: 0o755 });
+  const read = (): string => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '');
+  return { bin, log, name, read };
+}
+
+/** An orchestrator as the extension makes it, over a workspace folder of its own, with the machine check done. */
+function orchestratorFor(PATH: string) {
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-awake-ws-'));
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: ws } }];
+  const orch = new Orchestrator({ subscriptions: [] } as unknown as import('vscode').ExtensionContext);
+  orch.health = { PATH, claude: { ok: false }, git: {}, gh: {}, glab: {} };
+  return orch;
+}
+
+test('orchestrator: a task chosen to stay awake holds the computer with the tool on PATH while it runs, and lets go as it stops or finishes', { skip: process.platform === 'win32' && 'neither tool is on Windows' }, async () => {
+  const tool = fakeAwakeTool();
+  const orch = orchestratorFor(tool.bin);
+  try {
+    assert.equal((await orch.checkAwake()).path, path.join(tool.bin, tool.name), 'found on the PATH a terminal has');
+    await orch.rebuild();
+    const engine = orch.engine!;
+
+    engine.running.add('T-1');
+    orch.keepAwake.want('T-1', null);
+    await until(() => tool.read() !== '', 'the tool to start');
+    assert.match(tool.read(), tool.name === 'caffeinate' ? new RegExp(`^-i -m -s -w ${process.pid}\\n`) : new RegExp(`--pid=${process.pid} -f /dev/null\\n`), 'it ends with this process');
+    assert.ok(orch.keepAwake.holding);
+
+    // The engine says the task stopped running (it waits for you): the computer may sleep.
+    engine.running.delete('T-1');
+    engine.emit('changed', 'T-1');
+    assert.equal(orch.keepAwake.holding, false);
+    await until(() => /stopped/.test(tool.read()), 'the tool to be stopped');
+
+    // It runs on after your answer: awake again, as long as it runs.
+    fs.rmSync(tool.log);
+    engine.running.add('T-1');
+    engine.emit('changed', 'T-1');
+    await until(() => tool.read() !== '', 'the tool to start again');
+
+    // Finished: its choice is done with, though the engine has not let go of it yet.
+    engine.emit('finished', { taskId: 'T-1', state: {} });
+    assert.equal(orch.keepAwake.of('T-1'), null);
+    assert.equal(orch.keepAwake.holding, false);
+    await until(() => /stopped/.test(tool.read()), 'the tool to be stopped once it finished');
+  } finally {
+    orch.dispose();
+  }
+});
+
+test('orchestrator: closing the window lets the computer sleep; a tool that does not start says so and holds nothing', { skip: process.platform === 'win32' && 'neither tool is on Windows' }, async () => {
+  const tool = fakeAwakeTool();
+  const orch = orchestratorFor(tool.bin);
+  await orch.checkAwake();
+  orch.engine = { isRunning: (id: string) => id === 'T-1' } as unknown as Engine;
+  orch.keepAwake.want('T-1', 30);
+  await until(() => tool.read() !== '', 'the tool to start');
+  orch.dispose();
+  await until(() => /stopped/.test(tool.read()), 'the tool to be stopped with the window');
+
+  const broken = orchestratorFor(tool.bin);
+  const said: { level: string; message: string }[] = [];
+  broken.onEngine((e) => e.name === 'log' && void said.push(e.data));
+  broken.awakeTool = { name: tool.name as 'caffeinate', path: path.join(tool.bin, 'gone'), install: null, about: 'x' };
+  broken.engine = { isRunning: () => true } as unknown as Engine;
+  broken.keepAwake.want('T-1', null);
+  await until(() => said.length > 0, 'a warning');
+  assert.match(said[0]!.message, new RegExp(`${tool.name} did not start, so the computer may sleep`));
+  await until(() => !broken.keepAwake.holding, 'nothing held');
+  broken.dispose();
+});
+
+test('orchestrator: Install… types the command into a terminal for you to run, and looks for the tool again when it closes', async () => {
+  const orch = orchestratorFor('/nowhere');
+  orch.awakeTool = { name: 'systemd-inhibit', path: null, install: 'sudo apt-get install -y systemd', about: 'systemd-inhibit (part of systemd) is not installed' };
+  let looked = 0;
+  orch.checkAwake = async () => (looked++, orch.awakeTool!);
+  terminals.length = 0;
+  orch.installAwake();
+  assert.deepEqual(terminals.map((t) => [t.name, t.sent, t.shown]), [['Install systemd-inhibit', ['sudo apt-get install -y systemd'], true]], 'typed, not run for you: it asks for your password');
+  for (const fn of [...closeListeners]) fn({ name: 'another', sent: [], shown: false });
+  assert.equal(looked, 0, 'another terminal closing changes nothing');
+  for (const fn of [...closeListeners]) fn(terminals[0]!);
+  assert.equal(looked, 1);
+  assert.equal(closeListeners.length, 0, 'it stops listening');
+
+  orch.awakeTool = { name: 'caffeinate', path: '/usr/bin/caffeinate', install: null, about: 'caffeinate, built into macOS' };
+  assert.throws(() => orch.installAwake(), /nothing to install/);
+  orch.dispose();
 });

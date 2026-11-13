@@ -19,6 +19,7 @@ const vscodeStub = {
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   ThemeIcon: class {},
   ConfigurationTarget: { Global: 1 },
+  ViewColumn: { Beside: -2 },
 };
 const loader = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
 const load = loader._load;
@@ -221,9 +222,11 @@ test('panel: the task screen says where its failure has a Fix in chat', async ()
     svc: { exists: async () => true, state: async () => ({ checkpoint, pipeline: { stages: [], reviewLoop: null } }), readArtifact: async () => '' },
     checkpointContext: async () => ({ format: 'log', text: 'lint: 1 error' }),
   };
-  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, { orch: { engine }, pipelineEdit: async () => null });
+  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, { orch: { engine, keepAwake: { of: (id: string) => (id === 'T-1' ? { until: null } : null) } }, pipelineEdit: async () => null });
   try {
-    assert.equal((await p.$task({ taskId: 'T-1' })).fix, 'checkpoint');
+    const screen = await p.$task({ taskId: 'T-1' });
+    assert.equal(screen.fix, 'checkpoint');
+    assert.deepEqual(screen.awake, { until: null }, 'whether it keeps the computer awake, for its menu');
     checkpoint = { id: 'approve-plan', at: 'now' };
     assert.equal((await p.$task({ taskId: 'T-1' })).fix, null, 'a decision');
     checkpoint = null;
@@ -320,6 +323,106 @@ test('panel: Settings say whether Bitbucket has a token, from storage or the env
   } finally {
     if (env === undefined) delete process.env.BITBUCKET_API_TOKEN;
     else process.env.BITBUCKET_API_TOKEN = env;
+  }
+});
+
+test('panel: the MCP servers you hide are kept on this machine and left out of the overview\'s counts', async () => {
+  const stored = new Map<string, unknown>();
+  const servers = [
+    { name: 'Atlassian', scope: 'user', state: 'connected' },
+    { name: 'claude.ai Asana', scope: 'claude.ai', state: 'needs_auth' },
+    { name: 'jenkins', scope: 'user', state: 'failed' },
+  ];
+  const checkedAt = new Date().toISOString();
+  const p = integrationsPanel({ mcp: { servers, checking: false, checkedAt, error: null }, mcpState: () => ({ servers, checking: false, checkedAt, error: null }), health: { claude: {}, git: {}, gh: {}, glab: {} } });
+  Object.assign(p, { context: { globalState: { get: (k: string) => stored.get(k), update: async (k: string, v: unknown) => void stored.set(k, v) } } });
+
+  await p.$setMcpHidden({ name: 'jenkins', hidden: true });
+  await p.$setMcpHidden({ name: 'claude.ai Asana', hidden: true });
+  await p.$setMcpHidden({ name: 'jenkins', hidden: true });
+  assert.deepEqual(p.mcpHidden(), ['claude.ai Asana', 'jenkins'], 'once each');
+  assert.deepEqual((await p.$mcp({})).hidden, ['claude.ai Asana', 'jenkins'], 'the Integrations page lists them apart');
+
+  await p.$setMcpHidden({ name: 'claude.ai Asana', hidden: false });
+  assert.deepEqual(p.mcpHidden(), ['jenkins']);
+
+  stored.set('claudestrator.mcpHidden', ['jenkins', 7, null]);
+  assert.deepEqual(p.mcpHidden(), ['jenkins'], 'what storage holds is narrowed');
+});
+
+test('panel: a task started to keep the computer awake does so, and the choice can change or stop', async () => {
+  const calls: unknown[][] = [];
+  const keepAwake = { want: (...a: unknown[]) => void calls.push(['want', ...a]), drop: (...a: unknown[]) => void calls.push(['drop', ...a]) };
+  const engine = { start: async () => ({ taskId: 'T-1', created: true }), launch: () => {} };
+  const p = integrationsPanel({ engine, keepAwake, health: { claude: { ok: true } } });
+  await p.$start({ text: 'fix it', awake: { minutes: 120 } });
+  await p.$start({ text: 'and this' });
+  await p.$setAwake({ taskId: 'T-1', awake: { minutes: null } });
+  await p.$setAwake({ taskId: 'T-1', awake: null });
+  assert.deepEqual(calls, [['want', 'T-1', 120], ['want', 'T-1', null], ['drop', 'T-1']], 'a task started without it keeps nothing awake');
+});
+
+test("panel: a skill goes into the account's skills folder or the project's, and leaves it once you confirm", async () => {
+  const account = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-acc-'));
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-ws-'));
+  const p = integrationsPanel({ root: ws, accountChoice: () => ({ dir: account }) });
+  const states = async () => (await p.$skills()).filter((k) => k.name === 'claudestrator-library').map((k) => [k.user.state, k.project?.state]);
+  assert.deepEqual(await states(), [['absent', 'absent']]);
+
+  await p.$addSkill({ name: 'claudestrator-library', scope: 'user' });
+  await p.$addSkill({ name: 'claudestrator-library', scope: 'project' });
+  assert.ok(fs.existsSync(path.join(account, 'skills', 'claudestrator-library', 'SKILL.md')), 'the account the agents use, ~/.claude by default');
+  assert.ok(fs.existsSync(path.join(ws, '.claude', 'skills', 'claudestrator-library', 'SKILL.md')));
+  assert.deepEqual(await states(), [['current', 'current']]);
+
+  // The dialog's answers, in turn: dismissed, then Remove.
+  const answers: (string | undefined)[] = [undefined, 'Remove'];
+  vscodeStub.window.showWarningMessage = async () => answers.shift();
+  assert.deepEqual(await p.$removeSkill({ name: 'claudestrator-library', scope: 'project' }), { removed: false }, 'not without your yes');
+  assert.deepEqual(await p.$removeSkill({ name: 'claudestrator-library', scope: 'project' }), { removed: true });
+  assert.deepEqual(await states(), [['current', 'absent']]);
+  delete vscodeStub.window.showWarningMessage;
+});
+
+test("panel: the overview counts only the MCP servers you did not hide, and says what keeps the computer awake", async () => {
+  const stored = new Map<string, unknown>([['claudestrator.mcpHidden', ['claude.ai Asana']]]);
+  const servers = [
+    { name: 'Atlassian', scope: 'user', state: 'connected' },
+    { name: 'claude.ai Asana', scope: 'claude.ai', state: 'needs_auth' },
+    { name: 'jenkins', scope: 'user', state: 'failed' },
+  ];
+  const awakeTool = { name: 'caffeinate', path: '/usr/bin/caffeinate', install: null, about: 'caffeinate, built into macOS' };
+  const p = integrationsPanel({ root: '', engine: null, mcp: { servers, checking: false, checkedAt: null, error: null }, awakeTool, hasProjectConfig: async () => false, limits: async () => null, defaults: null, pendingPermissions: () => [] });
+  Object.assign(p, { context: { globalState: { get: (k: string) => stored.get(k), update: async (k: string, v: unknown) => void stored.set(k, v) } } });
+  const o = await p.$overview();
+  assert.deepEqual(o.mcp, { total: 2, connected: 1, problems: 1, installed: 0, checking: false }, 'the rail warns of jenkins only');
+  assert.deepEqual(o.awake, awakeTool);
+  await p.$setMcpHidden({ name: 'jenkins', hidden: true });
+  assert.deepEqual((await p.$overview()).mcp, { total: 1, connected: 1, problems: 0, installed: 0, checking: false }, 'nothing to warn of');
+});
+
+test('panel: Check again and Install… reach the orchestrator', async () => {
+  const done: string[] = [];
+  const tool = { name: 'systemd-inhibit', path: '/usr/bin/systemd-inhibit', install: null, about: 'systemd-inhibit, part of systemd' };
+  const p = integrationsPanel({ checkAwake: async () => (done.push('check'), tool), installAwake: () => void done.push('install') });
+  assert.deepEqual(await p.$checkAwake(), tool);
+  await p.$installAwake();
+  assert.deepEqual(done, ['check', 'install']);
+});
+
+test("panel: Open shows a skill's SKILL.md beside the dashboard, once it is added", async () => {
+  const account = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-skill-open-'));
+  const p = integrationsPanel({ root: '', accountChoice: () => ({ dir: account }) });
+  const shown: unknown[] = [];
+  vscodeStub.window.showTextDocument = async (uri: { fsPath: string }, opts: unknown) => void shown.push([uri.fsPath, opts]);
+  try {
+    await assert.rejects(p.$openSkill({ name: 'claudestrator-config', scope: 'user' }), /not added there/);
+    await assert.rejects(p.$openSkill({ name: 'claudestrator-config', scope: 'project' }), /Open a folder/, 'no project without a folder');
+    await p.$addSkill({ name: 'claudestrator-config', scope: 'user' });
+    await p.$openSkill({ name: 'claudestrator-config', scope: 'user' });
+    assert.deepEqual(shown, [[path.join(account, 'skills', 'claudestrator-config', 'SKILL.md'), { viewColumn: -2 }]]);
+  } finally {
+    delete vscodeStub.window.showTextDocument;
   }
 });
 

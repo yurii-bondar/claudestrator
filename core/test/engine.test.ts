@@ -12,7 +12,7 @@ import { writeUserMcpConfig } from '../src/mcp';
 import { AtlassianClient } from '../src/intake';
 import * as view from '../src/view';
 import { git, workspace, harness, only, runTask, previewOf, text, waitFor } from './helpers/e2e';
-import type { PermissionRequest } from '../src/engine';
+import type { Engine, PermissionRequest } from '../src/engine';
 import type { Agent, Readiness } from '../src/types';
 import type { RunnerOptions } from '../src/runner';
 import type { AuditResult, ReadinessResult } from '../src/report';
@@ -280,6 +280,136 @@ test('engine: a signed-out Claude Code is reported as such, and agents get the a
   fs.writeFileSync(account, JSON.stringify({ mcpServers: { Grafana: {}, Sentry: { type: 'http', url: 'http://s' } } }));
   await writeUserMcpConfig(out, cfg);
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers), ['Grafana', 'Sentry'], 'a changed one is');
+});
+
+/** A task as the side rail lists it. */
+const cardOf = async (engine: Engine, taskId: string) => view.summary(engine, { taskId, state: await engine.svc.state(taskId) });
+
+/** The sub-tasks the Atlassian MCP server finds under PROJ-805: two open, one done. */
+const SUBTASKS = JSON.stringify({
+  'PROJ-805': [
+    { key: 'PROJ-806', summary: '[BE] RNG: seeds per round', type: 'Sub-task', done: false },
+    { key: 'proj-807', summary: '[FE] RNG panel', type: 'Sub-task', done: false },
+    { key: 'PROJ-808', summary: 'Spike, finished', type: 'Sub-task', done: true },
+    { key: 'not a key', summary: 'dropped' },
+  ],
+});
+
+test("engine: a Jira story's sub-tasks become tasks of their own in its group, not started, and the story waits for you", async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner, developer]\n');
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: SUBTASKS });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  try {
+    const { taskId } = await h.engine.start({ text: 'PROJ-805 --no developer', effort: { planner: 'max' } });
+    const s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint && s.checkpoint.id, 'split', JSON.stringify(h.engine.lastError(taskId)));
+    assert.deepEqual(s.checkpoint!.options, ['close', 'continue']);
+    const group = { id: 'proj-805', type: 'story', label: 'Cap the max bet', jira: 'PROJ-805' };
+    assert.deepEqual(s.group, group, 'a story of its own, named by its summary');
+    assert.deepEqual(s.children, ['PROJ-806', 'PROJ-807'], 'the open ones, by their keys; the done one and a bad key are left out');
+    assert.equal(only(await h.engine.svc.events(taskId), 'stage_started').length, 0, 'no agent of the story ran');
+    assert.match(await h.engine.svc.readArtifact(taskId, 'ticket.md'), /## Sub-tasks\n\n- PROJ-806 \[BE\] RNG: seeds per round \(Sub-task\)\n- PROJ-807 \[FE\] RNG panel \(Sub-task\)\n- PROJ-808 Spike, finished \(Sub-task, done\)/);
+    assert.deepEqual((await h.engine.checkpointContext(s, s.checkpoint)).children, ['PROJ-806', 'PROJ-807']);
+
+    for (const id of ['PROJ-806', 'PROJ-807']) {
+      const child = await h.engine.svc.state(id);
+      assert.equal(child.phase, 'intake', `${id} has not run`);
+      assert.equal(h.engine.isRunning(id), false);
+      assert.deepEqual(child.group, group);
+      assert.deepEqual(child.source, { kind: 'jira', key: id });
+      assert.deepEqual(child.pipeline.stages.map((st) => st.agent), ['planner'], 'with the story\'s choices: no developer');
+      assert.equal(child.effort.planner, 'max');
+      const card = await cardOf(h.engine, id);
+      assert.equal(card.status.label, 'Not started');
+      assert.ok(card.status.resumable, 'started with Run');
+    }
+    assert.equal((await cardOf(h.engine, 'PROJ-806')).title, 'PROJ-806 [BE] RNG: seeds per round', 'named before its ticket is read');
+    assert.equal(await h.engine.svc.exists('PROJ-808'), false);
+
+    await h.engine.answer(taskId, 'split', 'close');
+    const closed = await h.engine.svc.state(taskId);
+    assert.equal(closed.status, 'done');
+    assert.equal(closed.outcome, 'split');
+    assert.equal((await cardOf(h.engine, taskId)).status.label, 'Split into sub-tasks');
+
+    // A sub-task, started: it reads its own ticket, which has none, and works as any task.
+    const child = await runTask(h.engine, 'PROJ-806');
+    assert.equal(child.phase, 'done', JSON.stringify(h.engine.lastError('PROJ-806')));
+    assert.equal(child.children, undefined, 'its ticket has no sub-tasks: it does not split');
+    assert.deepEqual(only(await h.engine.svc.events('PROJ-806'), 'stage_started').map((e) => e.agent), ['planner']);
+    assert.deepEqual(child.group, group);
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test("engine: an epic's child issues go into the epic's group, keeping what the task's own group asked; one of a project not allowed is left out, and said so", async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\njira: { allowedProjects: [PROJ] }\ngroups:\n  release:\n    type: group\n    label: Release 2\n    instructions: Ship behind the release-2 flag.\n    baseBranch: release/2\n');
+  const epic = { 'PROJ-900': { issueType: 'Epic', children: [{ key: 'PROJ-901', summary: 'Seeds', type: 'Story', done: false }, { key: 'OTHER-5', summary: 'Theirs', type: 'Story', done: false }] } };
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: JSON.stringify(epic) });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  const logs: { level: string; message: string }[] = [];
+  h.engine.on('log', (l: { level: string; message: string }) => void logs.push(l));
+  try {
+    const { taskId } = await h.engine.start({ text: 'PROJ-900', group: 'release' });
+    const s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint && s.checkpoint.id, 'split', JSON.stringify(h.engine.lastError(taskId)));
+    const group = { id: 'proj-900', type: 'epic', label: 'Cap the max bet', jira: 'PROJ-900', instructions: 'Ship behind the release-2 flag.', baseBranch: 'release/2' };
+    assert.deepEqual(s.group, group, "the epic's own group, with what Release 2 asked of its tasks");
+    assert.deepEqual(s.children, ['PROJ-901']);
+    assert.deepEqual((await h.engine.svc.state('PROJ-901')).group, group);
+    assert.equal(await h.engine.svc.exists('OTHER-5'), false);
+    assert.ok(logs.some((l) => l.level === 'warn' && /OTHER-5 did not become a task: Jira project OTHER is not allowed/.test(l.message)), JSON.stringify(logs));
+    assert.ok(logs.some((l) => l.level === 'info' && /1 sub-task of PROJ-900 added to Cap the max bet, not started: PROJ-901/.test(l.message)));
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test('engine: a ticket whose sub-tasks are all done, or are tasks already, does not split again', async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\n');
+  const done = { 'PROJ-805': [{ key: 'PROJ-806', summary: 'Old', type: 'Sub-task', done: true }] };
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: JSON.stringify(done) });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  try {
+    const s = await runTask(h.engine, (await h.engine.start({ text: 'PROJ-805' })).taskId);
+    assert.equal(s.phase, 'done', 'it worked as one task');
+    assert.equal(s.children, undefined);
+    assert.equal(s.group, undefined);
+
+    // A sub-task that is a task already keeps its own group and choices; the story still lists it.
+    const { taskId: own } = await h.engine.start({ text: 'PROJ-811' });
+    const before = await h.engine.svc.state(own);
+    const r = await h.engine.splitTicket({ ...s, source: { kind: 'jira', key: 'PROJ-810' } }, { ...s.spec!, children: [{ key: 'PROJ-811', summary: 'Mine', type: 'Sub-task', done: false }] });
+    assert.deepEqual(r && r.children, ['PROJ-811']);
+    assert.deepEqual(await h.engine.svc.state(own), before, 'left as it was');
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test('engine: a split story can still be worked on as one task, and joins a group the config has for its key', async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\npipeline: [planner]\ngroups:\n  rng:\n    type: epic\n    label: RNG\n    jira: PROJ-805\n    baseBranch: feat/rng\n');
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_JIRA_CHILDREN: SUBTASKS });
+  h.engine.mcpIntake = async () => ({ server: 'Atlassian', site: 'acme.atlassian.net' });
+  try {
+    const { taskId } = await h.engine.start({ text: 'PROJ-805' });
+    let s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint && s.checkpoint.id, 'split');
+    assert.equal(s.group!.id, 'rng', "the config's group for PROJ-805");
+    assert.equal((await h.engine.svc.state('PROJ-806')).group!.baseBranch, 'feat/rng');
+
+    await h.engine.answer(taskId, 'split', 'continue');
+    s = await waitFor(async () => {
+      const st = await h.engine.svc.state(taskId);
+      return !h.engine.isRunning(taskId) && st.status === 'done' ? st : null;
+    }, 60000);
+    assert.notEqual(s.outcome, 'split', 'not closed as split');
+    assert.deepEqual(only(await h.engine.svc.events(taskId), 'stage_started').map((e) => e.agent), ['planner'], 'the planner worked on the whole story');
+    assert.equal(s.group!.id, 'rng');
+  } finally {
+    h.hooks.dispose();
+  }
 });
 
 test('engine: "PROJ-805 перевір готовність…" runs a read-only readiness check, writes the report and posts it to Jira via MCP', async () => {

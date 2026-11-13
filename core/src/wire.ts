@@ -45,6 +45,8 @@ export interface Route {
   scenario?: string | undefined;
   focus?: string;
   section?: string;
+  /** A task's screen opened in a tab of its own ("Open in Tab"). */
+  tab?: boolean;
 }
 
 export interface Boot {
@@ -186,6 +188,8 @@ export interface McpData {
   checking: boolean;
   checkedAt: string | null;
   error: string | null;
+  /** The servers you hid: listed apart, and left out of every count and warning. */
+  hidden: string[];
   /** Missing while the machine check has not finished. */
   account: Account | undefined;
 }
@@ -427,6 +431,8 @@ export interface ReviewItemView {
 export interface CheckpointContext {
   format: 'markdown' | 'log';
   text: string;
+  /** After a split: the tasks the ticket's sub-tasks became. */
+  children?: string[];
   file?: string | undefined;
   repos?: { name: string; branch: string | null; base: string; files: number; dir: string }[];
   /** Before a push: what looks like a credential in what it would publish. */
@@ -466,7 +472,49 @@ export type TaskScreen = TaskDetail & {
   pipelineEdit: PipelineEdit | null;
   /** The pipeline as its diagram draws it: where each step is, the branch taken, the round of the loop. */
   flow: FlowItem[];
+  /** Whether it keeps the computer awake while it runs: until when (ms), or null for as long as it runs. */
+  awake: { until: number | null } | null;
 };
+
+// ---------- skills ----------
+
+/** Where a skill goes: the account's skills folder (every project), or the project's `.claude/skills`. */
+export type SkillScope = 'user' | 'project';
+
+/** A skill in one skills folder: not there, the version Claudestrator brings, or different (older, or edited). */
+export interface SkillPlace {
+  dir: string;
+  state: 'absent' | 'current' | 'differs';
+}
+
+/** A skill Claudestrator brings for Claude Code, and where it is. */
+export interface SkillView {
+  name: string;
+  label: string;
+  about: string;
+  user: SkillPlace;
+  /** Null without a workspace folder. */
+  project: SkillPlace | null;
+}
+
+// ---------- keeping the computer awake ----------
+
+/** What keeps the computer awake on this machine (core/src/awake.ts). */
+export interface AwakeTool {
+  /** caffeinate on macOS, systemd-inhibit on Linux; null where neither applies (Windows). */
+  name: 'caffeinate' | 'systemd-inhibit' | null;
+  /** Where it was found; null when it is not installed. */
+  path: string | null;
+  /** What installs it, typed into a terminal (Linux, when it is missing). */
+  install: string | null;
+  /** The tool in a line: what it is, or why it is missing. */
+  about: string;
+}
+
+/** How long a task keeps the computer awake: at most `minutes` while it runs, or as long as it runs (null). */
+export interface AwakeChoice {
+  minutes: number | null;
+}
 
 export interface CommentResult {
   ok: boolean;
@@ -647,6 +695,8 @@ export interface TaskSection {
 export interface Overview {
   root: string | null;
   rootName: string | null;
+  /** Whether the workspace folder is itself a git repository (it has a `.git`), not a folder of them. */
+  rootIsRepo: boolean;
   hasConfig: boolean;
   config: ConfigSummary | null;
   health: HealthSummary;
@@ -659,6 +709,8 @@ export interface Overview {
   /** The short names given to accounts on the start screen, by its tiles' key (the email, lowercase, or `dir:<folder>`). */
   accountAliases: Record<string, string>;
   mcp: McpSummary;
+  /** What keeps the computer awake here; null until it has been looked for. */
+  awake: AwakeTool | null;
   defaults: DefaultsView | null;
   permissions: PermissionRequest[];
   /** Languages offered for plans, reports and PR texts. */
@@ -911,6 +963,8 @@ export interface Rpc {
   testBitbucket: { params: void; result: AtlassianUser };
   mcp: { params: { refresh?: boolean }; result: McpData };
   mcpLogin: { params: { name: string }; result: Void };
+  /** Hides a server from the counts and warnings, or shows it again; kept on this machine. */
+  setMcpHidden: { params: { name: string; hidden: boolean }; result: Void };
   mcpShowLogin: { params: { name: string }; result: Void };
   mcpCancelLogin: { params: { name: string }; result: Void };
   mcpDetails: { params: { name: string }; result: string };
@@ -935,7 +989,21 @@ export interface Rpc {
   openExternal: { params: { url: string }; result: Void };
   copy: { params: { text: string }; result: Void };
   preview: { params: ComposerArgs; result: Preview };
-  start: { params: ComposerArgs; result: { taskId: string; created: boolean } };
+  /** `awake`: the task keeps the computer awake while it runs. */
+  start: { params: ComposerArgs & { awake?: AwakeChoice }; result: { taskId: string; created: boolean } };
+  /** Keeps the computer awake while the task runs, or stops (null). */
+  setAwake: { params: { taskId: string; awake: AwakeChoice | null }; result: Void };
+  skills: { params: void; result: SkillView[] };
+  /** Writes the skill into the scope's skills folder, over an older version. */
+  addSkill: { params: { name: string; scope: SkillScope }; result: Void };
+  /** Takes it out, once you confirm. */
+  removeSkill: { params: { name: string; scope: SkillScope }; result: { removed: boolean } };
+  /** Opens its SKILL.md in an editor. */
+  openSkill: { params: { name: string; scope: SkillScope }; result: Void };
+  /** Looks for the tool again (after installing it). */
+  checkAwake: { params: void; result: AwakeTool };
+  /** Opens a terminal with the command that installs the tool, for you to run. */
+  installAwake: { params: void; result: Void };
   saveScenario: { params: SaveScenarioParams; result: { id: string } };
   deleteScenario: { params: { id: string }; result: { deleted: boolean } };
   restoreScenario: { params: { id: string }; result: Void };

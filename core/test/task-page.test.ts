@@ -74,15 +74,93 @@ test('task page: a reviewed pull request asks before its review is posted, and s
 test('task page: posting sends the findings you unticked, and skipping sends none', async () => {
   const button = () => ({ dataset: { option: 'post' }, classList: { add() {}, remove() {} } });
   const boxes = { '.rv-pick': [{ checked: true, dataset: { id: '0.0' } }, { checked: false, dataset: { id: '1.0' } }] };
-  const posting = await taskScreen(POST_REVIEW, {}, boxes);
+  const posting = await taskScreen(POST_REVIEW, { elements: boxes });
   await posting.view.actions.answer!(button());
   assert.deepEqual(sent(posting.calls), [['answer', { taskId: 'api-pr-12', checkpointId: 'post-review', option: 'post', at: 'now', omit: ['1.0'] }]]);
 
-  const all = await taskScreen(POST_REVIEW, {}, { '.rv-pick': [{ checked: true, dataset: { id: '0.0' } }] });
+  const all = await taskScreen(POST_REVIEW, { elements: { '.rv-pick': [{ checked: true, dataset: { id: '0.0' } }] } });
   await all.view.actions.answer!(button());
   assert.deepEqual(sent(all.calls), [['answer', { taskId: 'api-pr-12', checkpointId: 'post-review', option: 'post', at: 'now' }]], 'everything ticked: nothing left out');
 
-  const skipping = await taskScreen(POST_REVIEW, {}, boxes);
+  const skipping = await taskScreen(POST_REVIEW, { elements: boxes });
   await skipping.view.actions.answer!({ ...button(), dataset: { option: 'skip' } });
   assert.deepEqual(sent(skipping.calls), [['answer', { taskId: 'api-pr-12', checkpointId: 'post-review', option: 'skip', at: 'now' }]]);
+});
+
+test("task page: a split ticket lists its sub-tasks, each opening its task, and asks whether it still works as one", async () => {
+  const { regions } = await taskScreen({
+    taskId: 'CP-1124',
+    source: { kind: 'jira', label: 'CP-1124', url: 'https://acme.atlassian.net/browse/CP-1124' },
+    status: { key: 'waiting', tone: 'warn', label: 'Sub-tasks added', resumable: false },
+    checkpointFull: { id: 'split', options: ['close', 'continue'], at: 'now' },
+    checkpointContext: { format: 'markdown', text: '', children: ['CP-1164', 'CP-1165'] },
+  });
+  const cp = regions['task-checkpoint']!;
+  assert.match(cp, /<h2>Sub-tasks added<\/h2>/);
+  assert.match(cp, /<div class="split-list"><button class="split-row" data-action="open-task" data-id="CP-1164">[\s\S]*?<b>CP-1164<\/b>[\s\S]*?<button class="split-row" data-action="open-task" data-id="CP-1165">/);
+  assert.match(cp, /data-option="close" data-kind="primary"[^>]*>[\s\S]*?Close this task<\/button>/);
+  assert.match(cp, /data-option="continue"[^>]*>[\s\S]*?Work on the whole ticket too<\/button>/);
+});
+
+/** The task screen with the shell's awake menu recorded: what it was drawn with, and the picks it turns into choices. */
+async function awakeScreen(screen: Record<string, unknown>) {
+  const drawn: unknown[] = [];
+  const shell = {
+    awakeMenu: (opts: unknown) => (drawn.push(JSON.parse(JSON.stringify(opts))), '<span class="awake-menu"></span>'),
+    awakePick: (v: string) => (v === 'run' ? { minutes: null } : v === 'off' ? null : { minutes: Number(v) }),
+    awakeHours: (v: string) => (Number(v) > 0 ? { minutes: Math.round(Number(v) * 60) } : null),
+    closeMenus: () => {},
+  };
+  return { ...(await taskScreen(screen, { shell })), drawn };
+}
+
+test('task page: a running task offers to keep the computer awake, shows what it has left, and changes or stops it', async () => {
+  const running = { status: { key: 'running', tone: 'accent', label: 'Running', group: 'running', resumable: false } };
+  const off = await awakeScreen({ ...running, awake: null });
+  assert.deepEqual(off.drawn, [{ scope: 'task', choice: null, until: null }]);
+
+  const unlimited = await awakeScreen({ ...running, awake: { until: null } });
+  assert.deepEqual(unlimited.drawn, [{ scope: 'task', choice: { minutes: null }, until: null }], 'as long as it runs');
+
+  const until = Date.now() + 90 * 60_000;
+  const timed = await awakeScreen({ ...running, awake: { until } });
+  const [opts] = timed.drawn as { scope: string; choice: { minutes: number }; until: number }[];
+  assert.equal(opts!.until, until);
+  assert.ok(Math.abs(opts!.choice.minutes - 90) <= 1, 'what it has left, in minutes');
+
+  const done = await awakeScreen({ status: { key: 'done', tone: 'ok', label: 'Done', group: 'done', resumable: false }, awake: null });
+  assert.deepEqual(done.drawn, [], 'a finished task has nothing to keep awake');
+
+  await timed.view.actions['task-awake']!({ dataset: { minutes: '120' } });
+  await timed.view.actions['task-awake']!({ dataset: { minutes: 'off' } });
+  await timed.view.changes['task-awake-hours']!({ value: '1.5' });
+  await timed.view.changes['task-awake-hours']!({ value: 'soon' });
+  assert.deepEqual(sent(timed.calls), [
+    ['setAwake', { taskId: 'T-1', awake: { minutes: 120 } }],
+    ['setAwake', { taskId: 'T-1', awake: null }],
+    ['setAwake', { taskId: 'T-1', awake: { minutes: 90 } }],
+  ], 'hours that are no number send nothing');
+});
+
+test('task page: a task never run is started with Start, one stopped is resumed', async () => {
+  const notStarted = await taskScreen({ status: { key: 'ready', tone: 'muted', label: 'Not started', group: 'stopped', resumable: true }, phase: 'intake', checkpointFull: null });
+  assert.match(notStarted.regions['task-header'] ?? '', /data-action="run"><i data-icon="play"><\/i>Start<\/button>/);
+  const stopped = await taskScreen({ status: { key: 'ready', tone: 'muted', label: 'Ready to continue', group: 'stopped', resumable: true }, phase: 'stages', checkpointFull: null });
+  assert.match(stopped.regions['task-header'] ?? '', /data-action="run"><i data-icon="play"><\/i>Resume<\/button>/);
+});
+
+test("task page: a split ticket's sub-tasks are listed with their titles and states, as the side rail has them", async () => {
+  const card = (taskId: string, title: string) => ({ taskId, title, status: { label: 'Not started' } });
+  const { regions } = await taskScreen(
+    {
+      taskId: 'CP-1124',
+      status: { key: 'waiting', tone: 'warn', label: 'Sub-tasks added', resumable: false },
+      checkpointFull: { id: 'split', options: ['close', 'continue'], at: 'now' },
+      checkpointContext: { format: 'markdown', text: '', children: ['CP-1164', 'CP-1165'] },
+    },
+    { overview: { tasks: [card('CP-1164', 'CP-1164 [BE] RNG: seeds <per round>'), card('CP-1165', 'CP-1165 [FE] RNG panel')] } },
+  );
+  const cp = regions['task-checkpoint']!;
+  assert.match(cp, /<b>CP-1164<\/b><span class="tt-title">\[BE\] RNG: seeds &lt;per round&gt;<\/span><span class="muted small">Not started<\/span>/, 'its key once, the title escaped');
+  assert.match(cp, /<b>CP-1165<\/b><span class="tt-title">\[FE\] RNG panel<\/span>/);
 });

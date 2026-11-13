@@ -258,6 +258,43 @@ test('machine: review limit, stop keeps the question, resume asks again', async 
   assert.equal(s.checkpoint!.id, 'approve-plan');
 });
 
+test('machine: a ticket that split waits for you before its first step; closed it is done, else it goes on as one task', async () => {
+  const { pipeline } = defaultPipeline();
+  const group = { id: 'proj-805', type: 'story' as const, label: 'RNG', jira: 'PROJ-805' };
+  const jira = { kind: 'jira' as const, key: 'PROJ-805' };
+  const split: EventBody[] = [
+    { ...createdEvent(pipeline, { source: jira, knownRepos: [] }), title: 'PROJ-805 RNG' },
+    { type: 'intake_completed', spec: { ...spec, source: jira }, split: { group, children: ['PROJ-806', 'PROJ-807'] } },
+  ];
+  const s = rpl(timed(split));
+  assert.equal(s.title, 'PROJ-805 RNG', 'named before its ticket is read');
+  assert.equal(s.status, 'waiting');
+  assert.deepEqual(s.checkpoint && [s.checkpoint.id, s.checkpoint.options], ['split', ['close', 'continue']], 'no Jira-only option, and no stop: closing is the way out');
+  assert.deepEqual(s.group, group, 'it joins the group of its sub-tasks');
+  assert.deepEqual(s.children, ['PROJ-806', 'PROJ-807']);
+  assert.equal(nx(s).kind, 'checkpoint');
+  assert.equal(tr(s, { type: 'stage_started', agent: 'planner', at: at(9) }).ok, false, 'no agent runs before you answer');
+  assert.equal(tr(s, { type: 'checkpoint_answered', id: 'split', option: 'stop', at: at(9) }).ok, false);
+  assert.equal(tr(s, { type: 'checkpoint_answered', id: 'approve-plan', option: 'approve', at: at(9) }).ok, false, 'only the question it waits at');
+
+  const closed = passed(tr(s, { type: 'checkpoint_answered', id: 'split', option: 'close', at: at(10) })).state;
+  assert.deepEqual([closed.status, closed.phase, closed.outcome], ['done', 'done', 'split']);
+  assert.equal(nx(closed).kind, 'done');
+  assert.equal(tr(closed, { type: 'stage_started', agent: 'planner', at: at(11) }).ok, false, 'a closed task runs nothing more');
+
+  const goesOn = passed(tr(s, { type: 'checkpoint_answered', id: 'split', option: 'continue', at: at(10) })).state;
+  assert.equal(goesOn.status, 'active');
+  assert.equal(goesOn.checkpoint, null);
+  const next = nx(goesOn);
+  assert.ok(next.kind === 'run' && next.step.agent === 'planner', 'its first step, for the whole ticket');
+  assert.deepEqual(goesOn.group, group, 'still in the group of its sub-tasks');
+
+  // Without sub-tasks a ticket goes straight to its first step, as before.
+  const plain = rpl(timed([createdEvent(pipeline, { source: jira, knownRepos: [] }), { type: 'intake_completed', spec: { ...spec, source: jira } }]));
+  assert.equal(plain.checkpoint, null);
+  assert.equal(plain.children, undefined);
+});
+
 /** A one-repo task whose reviewer asks for changes in every round; `emptyDiffs[i]` says whether round i + 1 had nothing to review. */
 function reviewedRounds(emptyDiffs: boolean[], reviewRounds: number): TaskState {
   const { pipeline } = defaultPipeline();
@@ -901,6 +938,17 @@ test('defaults: what "default" really means is asked from the CLI, and shown per
   assert.equal(effectiveFor({ model: 'claude-custom-9' }, d).modelName, 'Custom 9', 'unknown ids fall back to a readable name');
   assert.equal(modelName('claude-opus-4-8'), 'Opus 4.8');
   assert.equal(await resolveDefaults({ command: '/nonexistent/claude', cwd: os.tmpdir(), env: process.env }), null);
+});
+
+test('mcp: the counts leave out the servers you hid, their errors with them', () => {
+  const servers = mcp.parseMcpList(`claude.ai Docs: https://api.anthropic.com/mcp - ✔ Connected
+claude.ai Asana: https://mcp.asana.com/v2/mcp - ! Needs authentication
+jenkins: https://jenkins.example/mcp (HTTP) - ✗ Failed to connect
+shadcn: npx shadcn mcp - ⏸ Pending approval
+`);
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: [], checking: false }), { total: 4, connected: 1, problems: 2, installed: 1, checking: false });
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: ['claude.ai Asana', 'jenkins'], checking: true }), { total: 2, connected: 1, problems: 0, installed: 1, checking: true });
+  assert.deepEqual(mcp.summarizeMcp({ servers, hidden: ['gone'], checking: false }).total, 4, 'a hidden name no server has changes nothing');
 });
 
 test('mcp: states from claude mcp list, configured servers, masked details and sign-in', async () => {

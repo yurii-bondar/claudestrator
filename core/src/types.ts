@@ -11,7 +11,7 @@ export type ReportSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type CriterionStatus = 'met' | 'partial' | 'not_met' | 'unverifiable';
 export type ReadinessVerdict = 'ready' | 'not_ready' | 'needs_check';
 export type GitMode = 'branch' | 'worktree';
-export type CheckpointId = 'approve-step' | 'approve-plan' | 'gate-failure' | 'agent-failure' | 'review-limit' | 'protected-changes' | 'hook-failure' | 'confirm-push' | 'post-review';
+export type CheckpointId = 'approve-step' | 'approve-plan' | 'gate-failure' | 'agent-failure' | 'review-limit' | 'protected-changes' | 'hook-failure' | 'confirm-push' | 'post-review' | 'split';
 export type NextMode = 'initial' | 'retry' | 'replan' | 'fix';
 export type GroupType = 'epic' | 'story' | 'group';
 
@@ -429,6 +429,16 @@ export interface PullRequestInfo {
   startSha?: string;
 }
 
+/** A Jira issue's sub-task, or an epic's child issue: a task of its own once its parent splits. */
+export interface ChildIssue {
+  key: string;
+  summary: string;
+  /** Its issue type as Jira names it: Sub-task, Story, Task, Bug… */
+  type: string;
+  /** Whether its status is in Jira's Done category: a done one gets no task. */
+  done: boolean;
+}
+
 export interface Spec {
   id: string;
   source: Source;
@@ -436,6 +446,10 @@ export interface Spec {
   description: string;
   acceptanceCriteria: string[];
   links: SpecLink[];
+  /** A Jira issue's type (Story, Epic, Task…). */
+  issueType?: string;
+  /** A Jira issue's sub-tasks, or an epic's child issues. */
+  children?: ChildIssue[];
   request?: string;
   context?: string;
   /** A pull request under review. */
@@ -517,12 +531,16 @@ export interface Answer {
 export interface TaskState {
   taskId: string;
   input: string;
+  /** What to call it before its ticket is read: a sub-task's key and summary. */
+  title?: string;
   source: Source;
   scenario: string;
   scenarioName?: string;
   scenarioLabel?: string | undefined;
-  /** The group as it was when the task started. */
+  /** The group as it was when the task started, or the one its ticket's sub-tasks went into. */
   group?: TaskGroup;
+  /** The tasks its ticket's sub-tasks became, when it split. */
+  children?: string[];
   /** The instructions as they were when the task started: editing one later does not change a running task. */
   instructions: TaskInstruction[];
   auto: boolean;
@@ -609,6 +627,8 @@ export type OrchEvent = EventBase &
         type: 'task_created';
         taskId: string;
         input: string;
+        /** What to call it before its ticket is read: a sub-task's key and summary. */
+        title?: string;
         source: Source;
         scenario?: string;
         scenarioName?: string;
@@ -626,7 +646,8 @@ export type OrchEvent = EventBase &
         intake?: IntakeSettings | undefined;
         limits: Pick<Limits, 'reviewRounds' | 'gateAttempts'>;
       }
-    | { type: 'intake_completed'; spec: Spec; repos?: PlanRepo[]; plan?: PlanMeta }
+    /** `split`: the ticket's sub-tasks became tasks of their own, in `group`, and the task waits for you. */
+    | { type: 'intake_completed'; spec: Spec; repos?: PlanRepo[]; plan?: PlanMeta; split?: { group: TaskGroup; children: string[] } }
     | { type: 'stage_started'; agent: string; repo?: string }
     | {
         type: 'stage_completed';

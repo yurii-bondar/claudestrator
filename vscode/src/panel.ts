@@ -8,6 +8,8 @@ import * as os from 'os';
 import * as view from '../../core/src/view';
 import type { OutputPush } from '../../core/src/view';
 import { exists } from '../../core/src/files';
+import { summarizeMcp } from '../../core/src/mcp';
+import * as skills from '../../core/src/skills';
 import * as cfg from '../../core/src/config';
 import * as backups from '../../core/src/backup';
 import * as libraries from '../../core/src/library';
@@ -23,7 +25,7 @@ import { parsePageRequest, openable, SESSION_ID } from '../../core/src/requests'
 import { fixProblem, fixableCheckpoint, fixDirs, fixPrompt, fixArgs } from '../../core/src/fix';
 import { settings, type Orchestrator } from './orchestrator';
 import type { Engine } from '../../core/src/engine';
-import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, TaskScreen } from '../../core/src/wire';
+import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, SkillScope, TaskScreen } from '../../core/src/wire';
 import type { Agent, Effort, ScenarioStep, Gate, TaskState } from '../../core/src/types';
 import type { ConfigLayer, RepoLayer } from '../../core/src/config';
 
@@ -49,6 +51,8 @@ const PAGE_SCRIPTS = ['markdown.js', 'stream.js', 'app.js', 'task.js', 'diagram-
 /** Where the order of the start screen's account tiles, and their short names, are kept (globalState). */
 const ACCOUNT_ORDER = 'claudestrator.accountOrder';
 const ACCOUNT_ALIASES = 'claudestrator.accountAliases';
+/** The MCP servers hidden on the Integrations page, by name (globalState): this machine's, as its servers are. */
+const MCP_HIDDEN = 'claudestrator.mcpHidden';
 const LANGUAGES = ['English', 'Ukrainian', 'German', 'French', 'Spanish', 'Polish', 'Portuguese', 'Italian', 'Japanese', 'Chinese'];
 
 class DashboardPanel implements RpcHandlers {
@@ -301,6 +305,7 @@ class DashboardPanel implements RpcHandlers {
     return {
       root: this.root,
       rootName: this.root ? path.basename(this.root) : null,
+      rootIsRepo: this.root ? await exists(path.join(this.root, '.git')) : false,
       languages: LANGUAGES,
       hasConfig: await this.orch.hasProjectConfig(),
       config: this.root ? await this.configSummary() : null,
@@ -311,11 +316,8 @@ class DashboardPanel implements RpcHandlers {
       account: await this.orch.account(),
       accounts: await this.orch.accounts(),
       accountAliases: this.accountAliases(),
-      mcp: (() => {
-        const list = this.orch.mcp.servers;
-        const n = (st: string): number => list.filter((s) => s.state === st).length;
-        return { total: list.length, connected: n('connected'), problems: n('needs_auth') + n('failed'), installed: n('installed'), checking: this.orch.mcp.checking };
-      })(),
+      mcp: summarizeMcp({ servers: this.orch.mcp.servers, hidden: this.mcpHidden(), checking: this.orch.mcp.checking }),
+      awake: this.orch.awakeTool,
       defaults: this.orch.defaults ? { models: this.orch.defaults.models, byModel: this.orch.defaults.byModel } : null,
       permissions: this.orch.pendingPermissions(),
     };
@@ -334,7 +336,7 @@ class DashboardPanel implements RpcHandlers {
     return r.ok && !r.empty ? { ...r, outline: outline(r.pipeline, { pr: r.source.kind === 'pr' }) } : r;
   }
 
-  async $start(p: ComposerArgs) {
+  async $start({ awake, ...p }: Rpc['start']['params']) {
     await this.orch.ensureReady();
     if (!(this.orch.health && this.orch.health.claude.ok)) {
       const problem = (this.orch.health && this.orch.health.claude.error) || 'Claude Code CLI was not found';
@@ -343,7 +345,58 @@ class DashboardPanel implements RpcHandlers {
     }
     const r = await this.engine.start(p);
     this.engine.launch(r.taskId);
+    if (awake) this.orch.keepAwake.want(r.taskId, awake.minutes);
     return r;
+  }
+
+  async $setAwake({ taskId, awake }: Rpc['setAwake']['params']) {
+    if (awake) this.orch.keepAwake.want(taskId, awake.minutes);
+    else this.orch.keepAwake.drop(taskId);
+  }
+
+  // ---------- skills ----------
+
+  /** The skills folders a skill can go to: the account's the agents use (as you see it in the rail), and the project's. */
+  skillDirs(): { userDir: string; projectDir: string | null } {
+    const accountDir = this.orch.accountChoice().dir ?? path.join(os.homedir(), '.claude');
+    return { userDir: skills.skillsDirOf('user', { accountDir, workspace: null }), projectDir: this.root ? skills.skillsDirOf('project', { accountDir, workspace: this.root }) : null };
+  }
+
+  skillsDir(scope: SkillScope): string {
+    const { userDir, projectDir } = this.skillDirs();
+    if (scope === 'user') return userDir;
+    if (!projectDir) throw new Error('Open a folder to add a skill to its project');
+    return projectDir;
+  }
+
+  async $skills() {
+    return skills.listSkills(this.skillDirs());
+  }
+
+  async $addSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    await skills.addSkill({ name, skillsDir: this.skillsDir(scope) });
+  }
+
+  async $removeSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    const dir = path.join(this.skillsDir(scope), name);
+    const ok = await vscode.window.showWarningMessage(`Remove the skill ${name}?`, { modal: true, detail: `Its folder ${dir.replace(os.homedir(), '~')} is deleted, with any change you made to it. Add it again any time from Settings.` }, 'Remove');
+    if (ok !== 'Remove') return { removed: false };
+    await skills.removeSkill({ name, skillsDir: this.skillsDir(scope) });
+    return { removed: true };
+  }
+
+  async $openSkill({ name, scope }: { name: string; scope: SkillScope }) {
+    const file = path.join(this.skillsDir(scope), name, 'SKILL.md');
+    if (!(await exists(file))) throw new Error(`${name} is not added there`);
+    await vscode.window.showTextDocument(vscode.Uri.file(file), { viewColumn: vscode.ViewColumn.Beside });
+  }
+
+  async $checkAwake() {
+    return this.orch.checkAwake();
+  }
+
+  async $installAwake() {
+    this.orch.installAwake();
   }
 
   async $task({ taskId }: { taskId: string }): Promise<TaskScreen> {
@@ -361,6 +414,7 @@ class DashboardPanel implements RpcHandlers {
       ticket: await engine.svc.readArtifact(taskId, 'ticket.md'),
       pipelineEdit: await this.pipelineEdit(state),
       flow: flowOf(state),
+      awake: this.orch.keepAwake.of(taskId),
     };
   }
 
@@ -601,7 +655,17 @@ class DashboardPanel implements RpcHandlers {
     const stale = !this.orch.mcp.checkedAt || Date.now() - new Date(this.orch.mcp.checkedAt).getTime() > 2 * 60000;
     if (refresh || stale) await this.orch.refreshMcp();
     const health = await this.healthSummary();
-    return { ...this.orch.mcpState(), account: health.checking ? undefined : health.account };
+    return { ...this.orch.mcpState(), hidden: this.mcpHidden(), account: health.checking ? undefined : health.account };
+  }
+
+  mcpHidden(): string[] {
+    const stored: unknown = this.context.globalState.get(MCP_HIDDEN);
+    return Array.isArray(stored) ? stored.filter((n): n is string => typeof n === 'string') : [];
+  }
+
+  async $setMcpHidden({ name, hidden }: { name: string; hidden: boolean }) {
+    const rest = this.mcpHidden().filter((n) => n !== name);
+    await this.context.globalState.update(MCP_HIDDEN, hidden ? [...rest, name] : rest);
   }
 
   async $mcpLogin({ name }: { name: string }) {

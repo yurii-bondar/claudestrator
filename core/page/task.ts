@@ -15,7 +15,7 @@ interface Views {
 }
 
 (function () {
-  const { call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, size, plural, stepName, agentColor, S, views, go, patch, persist, statusBadge, sourceChip, permissionCard, autosize, shake, fmtTokens, meter, level, effortTag, scenarioChip, groupChip, sevCounts, SCENARIO_INFO, pipeRowHtml, pipeEditors, pipeDragging, modelChoices, EFFORT_LABEL } = window.CS;
+  const { call, attempt, toast, icon, esc, md, $, $$, ago, clock, dur, money, size, plural, stepName, agentColor, S, views, go, patch, persist, statusBadge, sourceChip, permissionCard, autosize, shake, fmtTokens, meter, level, effortTag, scenarioChip, groupChip, sevCounts, SCENARIO_INFO, pipeRowHtml, pipeEditors, pipeDragging, modelChoices, EFFORT_LABEL, awakeMenu, awakePick, awakeHours, closeMenus } = window.CS;
 
   type ReadinessResult = Extract<TaskResult, { kind: 'readiness' }>;
   type AuditResult = Extract<TaskResult, { kind: 'audit' }>;
@@ -98,6 +98,14 @@ interface Views {
       title: 'A git hook rejected the commit',
       lead: 'Fix what the hook complains about (for example run the formatter in that repo), then retry.',
       options: { retry: { label: 'Retry the commit', kind: 'primary', icon: 'refresh' }, stop: { label: 'Stop task', kind: 'ghost', icon: 'stop' } },
+    },
+    split: {
+      title: 'Sub-tasks added',
+      lead: "The ticket's sub-tasks are tasks of their own now, in its group in the side rail, not started: start each when you want it. This task does not change code meanwhile.",
+      options: {
+        close: { label: 'Close this task', kind: 'primary', icon: 'check', hint: 'The sub-tasks do the work; the ticket itself is not worked on.' },
+        continue: { label: 'Work on the whole ticket too', kind: 'secondary', icon: 'play', hint: 'This task goes on as one, with the sub-tasks listed in its ticket.' },
+      },
     },
     'confirm-push': {
       title: 'Push and open draft PRs?',
@@ -388,6 +396,10 @@ interface Views {
       }
     },
     actions: {
+      'task-awake': async (el) => {
+        closeMenus();
+        if (await attempt('setAwake', { taskId: T.taskId, awake: awakePick(el.dataset.minutes) })) await views.task.load(false);
+      },
       'select-step': (el) => {
         const key = el.dataset.key;
         if (!key) return;
@@ -503,6 +515,12 @@ interface Views {
       },
     },
     changes: {
+      'task-awake-hours': async (el) => {
+        const awake = awakeHours(el.value);
+        if (!awake) return;
+        closeMenus();
+        if (await attempt('setAwake', { taskId: T.taskId, awake })) await views.task.load(false);
+      },
       'fix-model': (el) => {
         S.ui.fixModel = el.value;
         persist();
@@ -572,7 +590,8 @@ interface Views {
         </div>
       </div>
       <div class="th-actions">
-        ${canResume ? `<button class="btn primary" data-action="run">${icon('play')}${k === 'failed' ? 'Retry' : 'Resume'}</button>` : ''}
+        ${d.status.group !== 'done' ? awakeMenu({ scope: 'task', choice: d.awake && { minutes: d.awake.until === null ? null : Math.max(1, Math.round((d.awake.until - Date.now()) / 60000)) }, until: d.awake ? d.awake.until : null }) : ''}
+        ${canResume ? `<button class="btn primary" data-action="run">${icon('play')}${k === 'failed' ? 'Retry' : k === 'ready' && d.phase === 'intake' ? 'Start' : 'Resume'}</button>` : ''}
         ${k === 'running' ? `<button class="btn" data-action="stop">${icon('stop')}Stop</button>` : ''}
         ${Object.keys(d.prs || {}).length ? Object.entries(d.prs).map(([r, u]) => `<button class="btn" data-action="open-url" data-url="${esc(u)}">${icon('pr')}${esc(r)} PR</button>`).join('') : ''}
         <div class="menu-wrap">
@@ -706,6 +725,15 @@ interface Views {
       }
     } else if (cp.id === 'post-review') {
       body = postReviewHtml(ctx);
+    } else if (cp.id === 'split') {
+      // Each sub-task as the side rail lists it: one click opens it, to start it there.
+      const cards = new Map(((S.overview && S.overview.tasks) || []).map((t) => [t.taskId, t]));
+      body = `<div class="split-list">${(ctx.children || [])
+        .map((id) => {
+          const t = cards.get(id);
+          return `<button class="split-row" data-action="open-task" data-id="${esc(id)}">${icon('file')}<b>${esc(id)}</b><span class="tt-title">${esc(t ? t.title.replace(new RegExp(`^${id}\\s*`), '') : '')}</span><span class="muted small">${esc(t ? t.status.label : '')}</span></button>`;
+        })
+        .join('')}</div>`;
     } else if (cp.id === 'approve-step') {
       // What the step wrote (one report per repo), each without its data block.
       body = `<div class="doc-frame"><div class="markdown">${(ctx.text || '').split('\n\n---\n\n').map((part) => md(stripJsonBlock(part))).join('<hr>')}</div></div>`;

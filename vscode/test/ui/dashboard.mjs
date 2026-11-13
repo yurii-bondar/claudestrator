@@ -6,7 +6,7 @@
 import test, { after, before } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,7 @@ let ws;
 function startPreview() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'cs-ui-home-'));
   const env = { ...process.env, HOME: home, USERPROFILE: home, PREVIEW_SETUP: '1', PREVIEW_DELAY: '50', PREVIEW_PORT: String(PORT) };
-  for (const k of ['GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'ATLASSIAN_API_TOKEN']) delete env[k];
+  for (const k of ['CLAUDE_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'ATLASSIAN_API_TOKEN']) delete env[k];
   server = spawn(process.execPath, [path.join(ROOT, 'dist', 'vscode', 'test', 'harness', 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   return new Promise((resolve, reject) => {
     let out = '';
@@ -258,4 +258,210 @@ test('clicks: a button whose region is drawn anew between the press and the rele
   const r = await clickWhileRedrawn();
   assert.equal(r.clicks, 1, 'the click went through');
   assert.equal(r.text, 'two', 'and the region shows what it was drawn with, once the click is done');
+});
+
+/** A task as the overview lists it, running or finished. */
+const card = (taskId, title, running) => ({
+  taskId, title, source: null, scenario: 'deliver', checkpoint: null, live: null, error: null, stopReason: undefined, round: 1, maxRounds: 2,
+  status: running ? { key: 'running', label: 'Running', tone: 'accent', group: 'running', resumable: false } : { key: 'done', label: 'Done', tone: 'ok', group: 'done', resumable: false },
+  phase: running ? 'agents' : 'done', outcome: undefined, prs: {}, branch: null, repos: [], cost: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), progress: { done: 0, total: 1 }, mini: [],
+});
+/** The tasks with a tab, in the order the strip shows them. */
+const tabs = () => b.eval(`[...document.querySelectorAll('.task-tabs .task-tab')].map((t) => t.dataset.id)`);
+
+test('task tabs: none by default; "Open in Tab" adds one, a drag reorders them, × closes one', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false), card('t-c', 'Gamma', true)];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: [] }; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  assert.equal(await b.eval(`!!document.querySelector('.task-tabs')`), false, 'running tasks open no tab by themselves');
+
+  // As the host sends it for the menu's Open in Tab.
+  for (const id of ['t-a', 't-b', 't-c']) {
+    await b.eval(`window.postMessage({ type: 'navigate', route: { name: 'task', taskId: '${id}', tab: true } }, '*'); true`);
+    await until(`document.querySelectorAll('.task-tabs .task-tab').length && [...document.querySelectorAll('.task-tab')].some((t) => t.dataset.id === '${id}')`, `the tab of ${id}`);
+  }
+  assert.deepEqual(await tabs(), ['t-a', 't-b', 't-c']);
+  assert.equal(await b.eval(`window.CS.S.route.tab`), undefined, 'the route keeps no tab flag');
+  assert.match(await textOf(`document.querySelector('.task-tab[data-id="t-b"]')`), /Beta/);
+
+  // Gamma dropped on the left half of Alpha goes first.
+  await b.eval(`(() => {
+    const at = (id) => document.querySelector('.task-tab[data-id="' + id + '"]');
+    const dt = new DataTransfer();
+    const r = at('t-a').getBoundingClientRect();
+    const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 2, clientY: r.top + 2 }));
+    fire(at('t-c'), 'dragstart');
+    fire(at('t-a'), 'dragover');
+    fire(at('t-a'), 'drop');
+    fire(at('t-c'), 'dragend');
+    return true;
+  })()`);
+  assert.deepEqual(await tabs(), ['t-c', 't-a', 't-b']);
+
+  await b.eval(`document.querySelector('.task-tab[data-id="t-a"] .tab-x').click(); true`);
+  assert.deepEqual(await tabs(), ['t-c', 't-b']);
+  assert.deepEqual(await b.eval(`window.CS.S.ui.taskTabs`), ['t-c', 't-b'], 'kept for the next time the page loads');
+
+  // A task deleted since loses its tab.
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify([tasks[1]])}, sections: [] }; await window.CS.loadOverview(); return true; })()`);
+  assert.deepEqual(await tabs(), ['t-b']);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
+});
+
+test('task tabs: ⌘-click on a task of the rail opens it in a tab; a plain click opens it alone', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false)];
+  const sections = [{ key: 'ungrouped', kind: 'ungrouped', label: 'Ungrouped', taskIds: ['t-a', 't-b'] }];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: ${JSON.stringify(sections)} }; window.CS.S.ui.taskTabs = []; window.CS.S.ui.tasksOpen = true; window.CS.S.ui.treeOpen = { ungrouped: true }; window.CS.S.ui.treeDone = { ungrouped: true }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  /** Clicks a task of the rail with the mouse; `modifiers` 4 is ⌘ (Meta). */
+  const click = async (id, modifiers = 0) => {
+    const at = await b.eval(`(() => { const r = document.querySelector('.tree-task[data-id="${id}"]').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
+    const ev = { x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers };
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...ev });
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...ev });
+    await b.sleep(150);
+  };
+  await click('t-a');
+  assert.deepEqual(await tabs(), [], 'a plain click opens no tab');
+  await until(`!!document.querySelector('.tree-task[data-id="t-b"]')`, 'the rail again');
+  await click('t-b', 4);
+  await until(`document.querySelectorAll('.task-tabs .task-tab').length === 1`, 'the tab');
+  assert.deepEqual(await tabs(), ['t-b']);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
+});
+
+test('integrations: a hidden MCP server leaves the list for a folded one, and Show brings it back', async () => {
+  const server = (name, state) => ({ name, scope: 'user', state, transport: 'http', target: `https://${name}.example/mcp`, canLogin: true, login: null });
+  const servers = [server('asana', 'needs_auth'), server('jenkins', 'failed'), server('atlassian', 'connected')];
+  // The harness has no MCP servers of its own: the page is told of these, and what you hid comes from the host.
+  await b.eval(`(() => {
+    window.addEventListener('message', (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && Array.isArray(d.servers) && 'hidden' in d) d.servers = ${JSON.stringify(servers)}; }, true);
+    window.CS.S.ui.mcpHiddenOpen = false;
+    window.CS.go({ name: 'mcp' });
+    return true;
+  })()`);
+  const shown = () => b.eval(`[...document.querySelectorAll('.mcp-list:not(.mcp-hidden) .mcp-name')].map((n) => n.textContent)`);
+  await until(`document.querySelectorAll('.mcp-row').length === 3`, 'the servers');
+  assert.match(await textOf(`document.querySelector('.mcp-legend')`), /error or needs sign-in · 2/);
+
+  await b.eval(`document.querySelector('[data-action="mcp-hide"][data-name="jenkins"]').click(); true`);
+  await until(`!!document.querySelector('.mcp-hidden-fold')`, 'the hidden servers');
+  assert.deepEqual(await shown(), ['asana', 'atlassian']);
+  assert.match(await textOf(`document.querySelector('.mcp-legend')`), /error or needs sign-in · 1/, 'its error counts no more');
+  assert.match(await textOf(`document.querySelector('.mcp-hidden-fold')`), /Hidden · 1/);
+  assert.equal(await b.eval(`!!document.querySelector('.mcp-hidden')`), false, 'folded');
+
+  await b.eval(`document.querySelector('.mcp-hidden-fold').click(); true`);
+  await b.eval(`document.querySelector('.mcp-hidden [data-action="mcp-hide"][data-name="jenkins"]').click(); true`);
+  await until(`!document.querySelector('.mcp-hidden-fold')`, 'jenkins back');
+  assert.deepEqual(await shown(), ['asana', 'jenkins', 'atlassian']);
+});
+
+test('composer: Stay awake names the tool of each system and whether this one has it, offers to install it, and takes hours', async () => {
+  const menu = `document.querySelector('[data-region="awake"]')`;
+  // Linux without systemd-inhibit: the menu says so and offers the command that installs it.
+  await b.eval(`(async () => { window.__overview = { awake: { name: 'systemd-inhibit', path: null, install: 'sudo apt-get install -y systemd', about: 'systemd-inhibit (part of systemd) is not installed' } }; window.CS.S.draft.awake = null; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.awake-btn')`, 'the Stay awake button');
+  const tip = await b.eval(`document.querySelector('.awake-btn').title`);
+  assert.match(tip, /macOS: caffeinate \(built in\) · Linux: systemd-inhibit \(part of systemd\)/);
+  assert.match(tip, /Here: systemd-inhibit \(part of systemd\) is not installed/);
+  assert.match(await textOf(`${menu}.querySelector('.awake-tool')`), /not installed\s*sudo apt-get install -y systemd\s*Install…\s*Check again/);
+
+  await b.eval(`document.querySelector('.awake-btn').click(); document.querySelector('[data-action="draft-awake"][data-minutes="120"]').click(); true`);
+  assert.deepEqual(await b.eval(`window.CS.S.draft.awake`), { minutes: 120 });
+  assert.match(await textOf(`document.querySelector('.awake-btn')`), /Awake · 2 h/);
+  assert.equal(await b.eval(`document.querySelector('.awake-btn').classList.contains('bad')`), true, 'chosen without the tool: a warning');
+
+  await b.eval(`(() => { const i = document.querySelector('[data-change="draft-awake-hours"]'); i.value = '1.5'; i.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  assert.deepEqual(await b.eval(`window.CS.S.draft.awake`), { minutes: 90 });
+  await b.eval(`document.querySelector('[data-action="draft-awake"][data-minutes="run"]').click(); true`);
+  assert.match(await textOf(`document.querySelector('.awake-btn')`), /Awake while it runs/);
+  await b.eval(`document.querySelector('[data-action="draft-awake"][data-minutes="off"]').click(); true`);
+  assert.equal(await b.eval(`window.CS.S.draft.awake`), null);
+
+  // This machine's own tool, as the host found it.
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); window.CS.views.home.renderAwake(); return true; })()`);
+  if (process.platform === 'darwin') assert.match(await textOf(`${menu}.querySelector('.awake-tool')`), /caffeinate, built into macOS: installed/);
+});
+
+test('rail: the workspace is named with a folder icon, or a repo icon when it is a git repository itself', async () => {
+  const kind = () => b.eval(`(() => { const i = document.querySelector('[data-region="workspace"] .ws-icon'); return i && (i.classList.contains('ws-repo') ? 'repo' : 'folder'); })()`);
+  await b.eval(`(async () => { await window.CS.loadOverview(); return true; })()`);
+  assert.equal(await kind(), 'folder', 'a folder of repos');
+  assert.equal(await textOf(`document.querySelector('[data-region="workspace"] .brand-name')`), path.basename(ws));
+  execFileSync('git', ['init', '-q'], { cwd: ws });
+  try {
+    await b.eval(`(async () => { await window.CS.loadOverview(); return true; })()`);
+    assert.equal(await kind(), 'repo');
+    assert.match(await b.eval(`document.querySelector('[data-region="workspace"] .brand-name').title`), /\(a git repository\)/);
+  } finally {
+    rmSync(path.join(ws, '.git'), { recursive: true, force: true });
+  }
+});
+
+test('settings: the library skill is added for you, shows as added, and can be opened or removed', async () => {
+  await b.eval(`(async () => { await window.CS.go({ name: 'settings' }); return true; })()`);
+  const at = (scope) => `[data-name="claudestrator-library"][data-scope="${scope}"]`;
+  const place = (scope) => `document.querySelector('[data-action="skill-add"]${at(scope)}, [data-action="skill-open"]${at(scope)}')?.closest('.skill-place')`;
+  await until(`!!${place('user')}`, 'the Skills section');
+  assert.match(await textOf(`document.querySelector('#sec-skills')`), /Writing Claudestrator libraries/);
+  assert.match(await textOf(place('user')), /For me .*Not added/);
+  assert.match(await textOf(place('project')), /This project .*\.claude\/skills.*Not added/);
+  assert.match(await textOf(`document.querySelector('#sec-skills')`), /Writing the workspace map.*Setting up config and checks/);
+  await b.eval(`document.querySelector('[data-action="skill-add"]${at('user')}').click(); true`);
+  await until(`/Added/.test(${place('user')}.innerText)`, 'the skill added');
+  assert.match(await textOf(place('user')), /Added Open Remove/);
+  assert.match(await textOf(place('project')), /Not added/, 'the project has its own');
+});
+
+test('task tabs: closing the tab on screen goes to the tab beside it, and the last one to the Tasks page', async () => {
+  const tasks = [card('t-a', 'Alpha', true), card('t-b', 'Beta', false), card('t-c', 'Gamma', false)];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: [] }; window.CS.S.ui.taskTabs = ['t-a', 't-b', 't-c']; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  /** Shows a task's screen as the page would, without asking the host for it, then closes `close` with ×: where the page goes. */
+  const closeOn = (shown, close) => b.eval(`(() => {
+    window.CS.S.route = { name: 'task', taskId: '${shown}' };
+    window.CS.patch('task-tabs', '');
+    window.CS.loadOverview();
+    return new Promise((r) => setTimeout(() => {
+      window.CS.views.task.enter = async () => {};
+      document.querySelector('.task-tab[data-id="${close}"] .tab-x').click();
+      r(JSON.parse(JSON.stringify(window.CS.S.route)));
+    }, 200));
+  })()`);
+  assert.deepEqual(await closeOn('t-b', 't-b'), { name: 'task', taskId: 't-c' }, 'the tab to its right');
+  assert.deepEqual(await tabs(), ['t-a', 't-c']);
+  assert.deepEqual(await closeOn('t-c', 't-c'), { name: 'task', taskId: 't-a' }, 'the last one: the tab to its left');
+  assert.deepEqual(await closeOn('t-a', 't-a'), { name: 'home' }, 'no tab left: the Tasks page');
+  assert.deepEqual(await tabs(), []);
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
+});
+
+test('rail: without a workspace folder the rail says so', async () => {
+  await b.eval(`(async () => { window.__overview = { root: null, rootName: null }; await window.CS.loadOverview(); return true; })()`);
+  assert.equal(await textOf(`document.querySelector('[data-region="workspace"]')`), 'No folder open');
+  assert.equal(await b.eval(`!!document.querySelector('[data-region="workspace"] .ws-folder, [data-region="workspace"] .ws-repo')`), false, 'no folder or repo to name');
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
+  assert.match(await textOf(`document.querySelector('[data-region="workspace"]')`), new RegExp(path.basename(ws)));
+});
+
+test("Stay awake on a task's screen: what it has left, or as long as it runs, and actions for that task", async () => {
+  const timed = await b.eval(`window.CS.awakeMenu({ scope: 'task', choice: { minutes: 90 }, until: Date.now() + 90 * 60000 })`);
+  assert.match(timed, /Awake · 1h (29|30)m left/);
+  assert.match(timed, /data-action="task-awake" data-minutes="run"/);
+  assert.match(timed, /value="" data-change="task-awake-hours"/, 'no hours filled in: the minutes left are not a choice');
+  const unlimited = await b.eval(`window.CS.awakeMenu({ scope: 'task', choice: { minutes: null }, until: null })`);
+  assert.match(unlimited, /Awake while it runs/);
+  assert.match(unlimited, /aria-checked="true" data-action="task-awake" data-minutes="run"/);
+  assert.deepEqual(await b.eval(`[window.CS.awakePick('off'), window.CS.awakePick('run'), window.CS.awakePick('120'), window.CS.awakePick('999999'), window.CS.awakeHours('0'), window.CS.awakeHours('2.5')]`), [null, { minutes: null }, { minutes: 120 }, { minutes: 10080 }, null, { minutes: 150 }], 'a week at most');
+});
+
+test('task list: a task never run has Start, one stopped has Resume', async () => {
+  const notStarted = { ...card('t-new', 'CP-1164 [BE] RNG', false), phase: 'intake', status: { key: 'ready', label: 'Not started', tone: 'muted', group: 'stopped', resumable: true } };
+  const stopped = { ...card('t-old', 'Old', false), phase: 'stages', status: { key: 'ready', label: 'Ready to continue', tone: 'muted', group: 'stopped', resumable: true } };
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify([notStarted, stopped])}, sections: [] }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.task-card[data-id="t-new"]')`, 'the cards');
+  assert.match(await textOf(`document.querySelector('.task-card[data-id="t-new"] [data-action="run"]')`), /^Start$/);
+  assert.match(await textOf(`document.querySelector('.task-card[data-id="t-old"] [data-action="run"]')`), /^Resume$/);
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); return true; })()`);
 });

@@ -3,7 +3,7 @@ import { ForgeError, forgeOfHost, issueRef, prRef, readIssue, readPullRequest } 
 import { ATTEMPTS, RETRY_STATUS, RETRY_STATUS_POST, retryAfterMs } from './http';
 import type { Run } from './forge';
 import type { BitbucketClient } from './bitbucket';
-import type { PlanMeta, Source, Spec } from './types';
+import type { ChildIssue, PlanMeta, Source, Spec } from './types';
 
 const FLAG_RE = /(^|\s)--(auto|no|only|key|effort|scenario|repos)(?=[\s=]|$)/;
 import { SCENARIOS as SCENARIO_NAMES, SCENARIO_ID } from './protocol';
@@ -308,6 +308,25 @@ interface IntakeOptions {
   prRepo?: string | undefined;
 }
 
+/**
+ * Child issues as an agent or a search hands them back, narrowed: each with a Jira key, once, the rest of the fields
+ * as text (a missing summary or type is empty), `done` only when it says so.
+ */
+function childIssues(raw: unknown): ChildIssue[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: ChildIssue[] = [];
+  for (const v of raw as unknown[]) {
+    if (typeof v !== 'object' || v === null) continue;
+    const r = v as Record<string, unknown>;
+    const key = typeof r.key === 'string' ? r.key.trim().toUpperCase() : '';
+    if (!JIRA_KEY.test(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, summary: typeof r.summary === 'string' ? r.summary.trim() : '', type: typeof r.type === 'string' ? r.type.trim() : '', done: r.done === true });
+  }
+  return out;
+}
+
 /** Turns a classified source into a task spec. Refuses disallowed Jira projects before any request is made. */
 async function runIntake(taskId: string, source: Source, opts: IntakeOptions = {}): Promise<Spec> {
   switch (source.kind) {
@@ -327,6 +346,8 @@ async function runIntake(taskId: string, source: Source, opts: IntakeOptions = {
       }
       const client = requireClient(opts, source);
       const issue = await attempt(() => client.issue(source.key));
+      // The ticket reads without them: a search Jira refuses (an older server) only means it does not split.
+      const children = await client.children(source.key).catch(() => []);
       const context = issue.comments.length
         ? `## Comments\n\n${issue.comments.map((c) => `**${c.author}** (${c.created.slice(0, 10)}):\n${c.body}`).join('\n\n')}`
         : undefined;
@@ -338,6 +359,8 @@ async function runIntake(taskId: string, source: Source, opts: IntakeOptions = {
         acceptanceCriteria: extractAcceptanceCriteria(issue.description),
         links: [{ title: issue.key, url: issue.url }, ...issue.links.map((l) => ({ title: `${l.relation} ${l.key}: ${l.summary}`, url: l.url }))],
         ...(context && { context }),
+        ...(issue.issueType && { issueType: issue.issueType }),
+        children,
       };
     }
     case 'confluence': {
@@ -447,6 +470,8 @@ function renderTicket(spec: Spec): string {
   parts.push('## Acceptance criteria', spec.acceptanceCriteria.length ? spec.acceptanceCriteria.map((c) => `- ${c}`).join('\n') : '_None given._');
   if (spec.request) parts.push('## What the user asked', spec.request);
   if (spec.links.length) parts.push('## Links', spec.links.map((l) => `- [${l.title}](${l.url})`).join('\n'));
+  // A task that splits and still goes on as one knows the parts others take up.
+  if (spec.children && spec.children.length) parts.push('## Sub-tasks', spec.children.map((c) => `- ${c.key} ${c.summary}${c.type ? ` (${c.type}${c.done ? ', done' : ''})` : c.done ? ' (done)' : ''}`).join('\n'));
   if (spec.context) parts.push(spec.context);
   return `${parts.join('\n\n')}\n`;
 }
@@ -880,12 +905,17 @@ interface JiraIssueReply {
     summary?: string;
     description?: string | AdfNode | null;
     comment?: { comments?: { author?: { displayName?: string }; created?: string; body: string | AdfNode }[] };
+    issuetype?: { name?: string };
     issuelinks?: { type?: { outward?: string; inward?: string }; outwardIssue?: JiraLinked; inwardIssue?: JiraLinked }[];
   };
 }
 interface JiraLinked {
   key: string;
   fields?: { summary?: string };
+}
+/** A search's issues, as `children` reads them. */
+interface JiraSearchReply {
+  issues?: { key: string; fields?: { summary?: string; issuetype?: { name?: string }; status?: { statusCategory?: { key?: string } } } }[];
 }
 interface ConfluencePageReply {
   id: string | number;
@@ -974,13 +1004,14 @@ class AtlassianClient {
   }
 
   async issue(key: string) {
-    const data = await this.request<JiraIssueReply>('GET', `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,comment,issuelinks`);
+    const data = await this.request<JiraIssueReply>('GET', `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,comment,issuelinks,issuetype`);
     const f = data.fields ?? {};
     const browse = (k: string): string => `${this.base}/browse/${k}`;
     return {
       key: data.key,
       url: browse(data.key),
       summary: f.summary ?? '',
+      issueType: (f.issuetype && f.issuetype.name) ?? '',
       description: f.description ? (typeof f.description === 'string' ? f.description : adfToText(f.description)) : '',
       comments: ((f.comment && f.comment.comments) ?? []).map((c) => ({
         author: (c.author && c.author.displayName) ?? 'unknown',
@@ -993,6 +1024,14 @@ class AtlassianClient {
         return [{ key: other.key, summary: (other.fields && other.fields.summary) ?? '', relation: (l.outwardIssue ? l.type && l.type.outward : l.type && l.type.inward) ?? 'relates to', url: browse(other.key) }];
       }),
     };
+  }
+
+  /** An issue's sub-tasks, or an epic's child issues: `parent = KEY` finds both. */
+  async children(key: string): Promise<ChildIssue[]> {
+    if (!JIRA_KEY.test(key)) return [];
+    const jql = encodeURIComponent(`parent = ${key} ORDER BY key ASC`);
+    const data = await this.request<JiraSearchReply>('GET', `/rest/api/3/search/jql?jql=${jql}&fields=summary,issuetype,status&maxResults=100`);
+    return childIssues((data.issues ?? []).map((i) => ({ key: i.key, summary: i.fields?.summary, type: i.fields?.issuetype?.name, done: i.fields?.status?.statusCategory?.key === 'done' })));
   }
 
   async page(id: string) {
@@ -1038,6 +1077,7 @@ function withoutKey(title: string, key: string): string {
 
 export type { Classified, Invocation };
 export {
+  childIssues,
   capSpec,
   planFromTicket,
   parseInvocation,

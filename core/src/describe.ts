@@ -15,6 +15,7 @@ const CHECKPOINT_TITLE: Record<string, string> = {
   'hook-failure': 'Commit failed',
   'confirm-push': 'Confirm push',
   'post-review': 'Post the review',
+  split: 'Sub-tasks added',
 };
 
 /** What a checkpoint is called where it is listed: an agent that said it cannot go on is blocked, not failed. */
