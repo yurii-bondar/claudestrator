@@ -508,6 +508,15 @@ interface Views {
         const r = T.d!.result;
         if (r && r.kind === 'readiness') go({ name: 'home', scenario: 'deliver', compose: fixGapsText(T.d!, r) });
       },
+      // The findings you ticked, as a delivery task on the pull request's branch; this review still waits for its answer.
+      'fix-review': () => {
+        const review = T.d!.checkpointContext && T.d!.checkpointContext.review;
+        if (!review) return;
+        const ticked = $$<HTMLInputElement>('.rv-pick').filter((c) => c.checked).map((c) => c.dataset.id ?? '');
+        const items = review.items.filter((i) => ticked.includes(i.id));
+        if (!items.length) return toast('Tick the findings the task should fix', 'warn');
+        go({ name: 'home', scenario: 'deliver', compose: fixReviewText(T.d!, review, items) });
+      },
       'fix-finding': (el) => {
         const r = T.d!.result;
         const f = r && r.kind === 'audit' ? r.findings[Number(el.dataset.i)] : undefined;
@@ -766,7 +775,7 @@ interface Views {
       ${cp.step ? `<div class="muted small cp-step">At ${esc(stepName(cp.step))}</div>` : ''}
       <div class="cp-body">${body}</div>
       ${needsFeedback ? `<textarea id="cp-feedback" class="input autosize" rows="2" data-input="cp-feedback" placeholder="${esc(ui.placeholder || 'Feedback (optional)')}">${esc(T.feedback)}</textarea>` : ''}
-      <div class="cp-actions">${buttons}${d.fix === 'checkpoint' ? fixButton('') : ''}<span class="muted small kbd-hint"><kbd>⌘↵</kbd> <span id="cp-kbd">${esc((keyed !== undefined && ui.options[keyed]?.label) || '')}</span></span></div>
+      <div class="cp-actions">${buttons}${cp.id === 'post-review' && ctx.review && ctx.review.items.length ? `<button class="btn" data-action="fix-review" title="A delivery task prefilled with the ticked findings, starting from the pull request's branch ${esc(ctx.review.head)}: its PR goes into that branch. This review still waits here: post it or finish it after.">${icon('play')}Fix in new task</button>` : ''}${d.fix === 'checkpoint' ? fixButton('') : ''}<span class="muted small kbd-hint"><kbd>⌘↵</kbd> <span id="cp-kbd">${esc((keyed !== undefined && ui.options[keyed]?.label) || '')}</span></span></div>
     </section>`;
   }
 
@@ -1307,6 +1316,21 @@ interface Views {
     const lines = [`${head}`, '', 'Close what the readiness check found:'];
     for (const c of r.criteria.filter((x) => x.status === 'partial' || x.status === 'not_met')) lines.push(`- ${c.criterion} (${CRITERION_UI[c.status]!.label})${c.evidence ? `: ${c.evidence}` : ''}`);
     for (const g of r.gaps) lines.push(`- [${g.severity}] ${g.problem}${g.fix ? ` → ${g.fix}` : ''}`);
+    return lines.join('\n');
+  }
+
+  /**
+   * The text of a task that fixes a pull request's review findings: on the PR's branch (the planner makes it the plan's
+   * base branch), so the fix goes into the pull request as a PR of its own.
+   */
+  function fixReviewText(d: TaskScreen, review: NonNullable<CheckpointContext['review']>, items: ReviewItemView[]) {
+    const lines = [
+      `Fix what the review of ${review.url} found${d.title ? ` (${d.title})` : ''}`,
+      '',
+      `In the repo ${review.repo}, on the pull request's branch: start from ${review.head} (baseBranch "${review.head}"), so this fix's PR goes into it.`,
+      '',
+    ];
+    for (const i of items) lines.push(`- [${i.severity}] ${i.path ? `${i.path}${i.line !== undefined ? `:${i.line}` : ''} ` : ''}${i.problem}${i.fix ? ` → ${i.fix}` : ''}`);
     return lines.join('\n');
   }
 

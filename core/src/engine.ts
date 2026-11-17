@@ -2573,7 +2573,7 @@ class Engine extends EventEmitter {
           ...(i.finding.line !== undefined && { line: i.finding.line }),
           inline: i.inline,
         }));
-        return { format: 'markdown', text: postPreview(post, pr.url), review: { url: pr.url, items } };
+        return { format: 'markdown', text: postPreview(post, pr.url), review: { url: pr.url, repo: pr.repo, head: pr.head, items } };
       }
       default:
         return { format: 'log', text: cp.reason || '' };

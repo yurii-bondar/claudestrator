@@ -48,6 +48,8 @@ const POST_REVIEW = {
     text: 'Posted to https://github.com/acme/api/pull/12 as you choose, not before.',
     review: {
       url: 'https://github.com/acme/api/pull/12',
+      repo: 'api',
+      head: 'feat/cap',
       items: [
         { id: '0.0', agent: 'reviewer', severity: 'major', problem: 'bet() never checks <CAP>', fix: 'refuse x > CAP', path: 'src/cap.js', line: 2, inline: true },
         { id: '1.0', agent: 'appsec-reviewer', severity: 'minor', problem: 'log the refusal', inline: false },
@@ -67,8 +69,36 @@ test('task page: a reviewed pull request asks before its review is posted, and s
   assert.match(cp, /data-option="skip"[^>]*>[\s\S]*?Finish without posting<\/button>/);
   assert.match(cp, /<div class="cp-icon"><i data-icon="pr"><\/i><\/div>/);
 
-  const none = await taskScreen({ ...POST_REVIEW, checkpointContext: { ...POST_REVIEW.checkpointContext, review: { url: 'u', items: [] } } });
+  assert.match(cp, /data-action="fix-review" title="[^"]*from the pull request's branch feat\/cap[^"]*">[\s\S]*?Fix in new task<\/button>/);
+
+  const none = await taskScreen({ ...POST_REVIEW, checkpointContext: { ...POST_REVIEW.checkpointContext, review: { url: 'u', repo: 'api', head: 'feat/cap', items: [] } } });
   assert.match(none.regions['task-checkpoint']!, /The reviewers found nothing: only the summary with their verdicts goes\./);
+  assert.doesNotMatch(none.regions['task-checkpoint']!, /fix-review/, 'nothing to fix');
+});
+
+test('task page: Fix in new task opens a delivery task with the ticked findings, on the pull request\'s branch', async () => {
+  const routes: unknown[] = [];
+  const shell = { go: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) };
+  const ticked = await taskScreen({ ...POST_REVIEW, title: 'Cap bets' }, { shell, elements: { '.rv-pick': [{ checked: true, dataset: { id: '0.0' } }, { checked: false, dataset: { id: '1.0' } }] } });
+  await ticked.view.actions['fix-review']!({});
+  assert.deepEqual(routes, [
+    {
+      name: 'home',
+      scenario: 'deliver',
+      compose: [
+        'Fix what the review of https://github.com/acme/api/pull/12 found (Cap bets)',
+        '',
+        'In the repo api, on the pull request\'s branch: start from feat/cap (baseBranch "feat/cap"), so this fix\'s PR goes into it.',
+        '',
+        '- [major] src/cap.js:2 bet() never checks <CAP> → refuse x > CAP',
+      ].join('\n'),
+    },
+  ], 'the unticked one is left out');
+  assert.deepEqual(sent(ticked.calls), [], 'the review is not answered: it still waits to be posted or finished');
+
+  const unticked = await taskScreen(POST_REVIEW, { shell, elements: { '.rv-pick': [{ checked: false, dataset: { id: '0.0' } }] } });
+  await unticked.view.actions['fix-review']!({});
+  assert.equal(routes.length, 1, 'nothing ticked: no task');
 });
 
 test('task page: posting sends the findings you unticked, and skipping sends none', async () => {

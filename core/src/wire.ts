@@ -446,8 +446,11 @@ export interface CheckpointContext {
   protectedChanges?: { repo: string; file: string; before: string | null; after: string | null; instructionsOnly: boolean }[];
   /** Whether Claudestrator applies them when you say so (`policy.protectedChanges` is not `off`). */
   canApply?: boolean;
-  /** Before a pull request's review is posted: each finding, and whether it would be a comment on its line. */
-  review?: { url: string; items: ReviewItemView[] };
+  /**
+   * Before a pull request's review is posted: each finding, and whether it would be a comment on its line; the repo it
+   * is in and the branch it comes from, where a task that fixes the findings starts.
+   */
+  review?: { url: string; repo: string; head: string; items: ReviewItemView[] };
   /** A review whose blocking findings are all about files no agent changes: those files. */
   humanFiles?: string[];
 }
