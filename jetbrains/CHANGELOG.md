@@ -1,3 +1,24 @@
+## [0.14.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.13.0...jetbrains-claudestrator-v0.14.0) (2026-11-18)
+
+### Features
+
+* **core:** a plan's open questions are answered in place: the planner's answer picked, its other answers, your own words, and a new task for the work an answer leaves out ([3d9e20e](https://github.com/yurii-bondar/claudestrator/commit/3d9e20eec5cc37bbf9a038208a9d31602030a98b))
+* **core:** a reviewed pull request's findings can be fixed in a new task, on its branch ([94cfb85](https://github.com/yurii-bondar/claudestrator/commit/94cfb8552fdd7ccd06d1171911866527db336635))
+* **core:** an agent can be given only some of the MCP servers, from its config or a server's menu on Integrations ([17c778a](https://github.com/yurii-bondar/claudestrator/commit/17c778afcdb2e3e934f625d4b70eb16aa7895f46))
+* **core:** Claude Code in a terminal with Claudestrator in context: its agents as subagents, and a bridge to start and follow tasks ([f8c6c94](https://github.com/yurii-bondar/claudestrator/commit/f8c6c949e6adfc6159fc6cdd434da9b86123ccfd))
+* **core:** Integrations folds Jira & Confluence and Bitbucket to their status until you open one ([b8d0baf](https://github.com/yurii-bondar/claudestrator/commit/b8d0baf75742fd8fc9848627514ee5c4f2194c27))
+* **core:** sync repos: pull the default branch into the picked repos, resolve conflicts with Claude Code, and delete the branches it already holds ([2a2c088](https://github.com/yurii-bondar/claudestrator/commit/2a2c0883badccf4fc5d52be9ec092e694fca45a7))
+* **core:** the composer's scenarios menu lists names only; what a scenario does shows on its info icon ([43a9dfb](https://github.com/yurii-bondar/claudestrator/commit/43a9dfbc0a75d4fe0b7022032760c68819cd0c04))
+* **core:** the rail's tasks are folded under Tasks until you open them ([7bf3720](https://github.com/yurii-bondar/claudestrator/commit/7bf3720b30feac0db4a1f77262d8e62638104b25))
+* **vscode:** agents with some MCP servers only are started without the tools of the others ([9a3beca](https://github.com/yurii-bondar/claudestrator/commit/9a3beca04b65cfb0b4d92da4100c93f9a03135f1))
+* **vscode:** open Claude Code with Claudestrator from the rail or the command palette ([9cea0be](https://github.com/yurii-bondar/claudestrator/commit/9cea0be33d826cc6f8751ad21745f6f542f1491b))
+* **vscode:** Repos & checks syncs the picked repos and deletes their merged branches once confirmed ([77e79b4](https://github.com/yurii-bondar/claudestrator/commit/77e79b4bf31b245a205107d094c7d5bd0fdc4920))
+
+### Bug Fixes
+
+* **core:** the composer's scenarios menu stays closed until its button opens it ([dc1a8a5](https://github.com/yurii-bondar/claudestrator/commit/dc1a8a5e6f5d025de3892159feb237f16e300ca4))
+* **core:** unsetting a field of an agent the project's config does not name no longer fails, and leaves no empty entry ([beb191f](https://github.com/yurii-bondar/claudestrator/commit/beb191fea0e16aa459eca0fcb84b6d6dbf34b1a3))
+
 ## [0.13.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.12.0...jetbrains-claudestrator-v0.13.0) (2026-11-13)
 
 ### Features
