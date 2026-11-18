@@ -267,6 +267,7 @@ class Orchestrator {
       flags: () => new Set((this.health && this.health.claude && this.health.claude.flags) || DEFAULT_FLAGS),
       settingSources: () => settings().get<string[]>('settingSources') || null,
       mcpConfig: () => mcp.writeUserMcpConfig(this.agentMcpFile(), this.agentEnv().CLAUDE_CONFIG_DIR),
+      mcpServers: () => this.mcpServerNames(),
       env: (): NodeJS.ProcessEnv => {
         const dir = this.accountChoice().dir;
         return dir ? { CLAUDE_CONFIG_DIR: dir } : {};
@@ -637,6 +638,12 @@ class Orchestrator {
       this.mcp = { servers, checking: false, checkedAt: new Date().toISOString(), error: (e as Error).message };
     }
     this.fire();
+  }
+
+  /** Every MCP server Claude Code may load for the account: the ones the last check listed, and the ones its config files name. */
+  async mcpServerNames(): Promise<string[]> {
+    const configured = this.root ? await mcp.configuredMcpServers(this.root, this.agentEnv().CLAUDE_CONFIG_DIR).catch(() => []) : [];
+    return [...new Set([...this.mcp.servers, ...configured].map((x) => x.name))];
   }
 
   /**
