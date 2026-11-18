@@ -285,8 +285,7 @@ class Orchestrator {
       bitbucket: () => this.bitbucket(),
       mcpIntake: (tracker) => this.mcpIntakeServer(tracker),
       askPermissions: () => settings().get('askPermissions') === true,
-      // The bridge's token too: an agent that read it could start tasks of its own.
-      secretFiles: () => [this.agentMcpFile(), this.terminalMcpFile()],
+      secretFiles: () => this.secretFiles(),
     });
     const engine = this.engine;
     for (const name of ['changed', 'output', 'live', 'log', 'checkpoint', 'finished', 'permission', 'permissionDone', 'limits']) {
@@ -601,6 +600,11 @@ class Orchestrator {
   /** The account's MCP servers for the agents (`--mcp-config`), with their tokens: the agents themselves never read it. */
   agentMcpFile(): string {
     return path.join(this.context.globalStorageUri.fsPath, 'agent-mcp.json');
+  }
+
+  /** Files no agent reads: the account's MCP servers carry tokens, and an agent with the bridge's could start tasks of its own. */
+  secretFiles(): string[] {
+    return [this.agentMcpFile(), this.terminalMcpFile()];
   }
 
   /** The terminal session's MCP config: the bridge's address and token. */
