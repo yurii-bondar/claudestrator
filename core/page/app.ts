@@ -508,9 +508,9 @@ interface Views {
       const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram'));
       return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''}>${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
     };
-    // Tasks is the root of the tree, an item like the others: a click folds or opens the tasks under it (the logo opens
-    // the Tasks page). With no tasks yet it opens the page.
-    const tasksOpen = S.ui.tasksOpen !== false;
+    // Tasks is the root of the tree, an item like the others: a click opens or folds the tasks under it (the logo opens
+    // the Tasks page), folded until you open it. With no tasks yet it opens the page.
+    const tasksOpen = S.ui.tasksOpen === true;
     const tree = taskTree(o);
     const tasks = NAV.find((n) => n.name === 'home')!;
     const root = tree ? item(tasks, `data-action="tasks-toggle" aria-expanded="${tasksOpen}"`) : item(tasks);
@@ -2139,7 +2139,7 @@ interface Views {
       persist();
     },
     'tasks-toggle': () => {
-      S.ui.tasksOpen = S.ui.tasksOpen === false;
+      S.ui.tasksOpen = !S.ui.tasksOpen;
       persist();
       renderNav();
     },
