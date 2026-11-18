@@ -405,3 +405,17 @@ test("config: the built-in agents leave git and how a json is handed over to the
     if (/End with the json/.test(agent.instructions)) assert.match(agent.instructions, /the prompt says how to hand it over/, name);
   }
 });
+
+test('config: an agent uses only the MCP servers its mcpServers names, inherited like its other fields; a project that adds one says so', async () => {
+  const ws = workspace('agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, "claude.ai Slack"] }\n  night-watcher: { extends: watcher }\n');
+  const r = passed(await config.loadConfig({ workspace: ws, home: tmp('cs-home-') }));
+  assert.deepEqual(r.config.agents.watcher!.mcpServers, ['Grafana', 'claude.ai Slack']);
+  assert.deepEqual(r.config.agents['night-watcher']!.mcpServers, ['Grafana', 'claude.ai Slack'], 'from the agent it extends');
+  assert.equal(r.config.agents.planner!.mcpServers, undefined, 'unset: every server');
+  assert.deepEqual(validateConfigLayer({ agents: { watcher: { mcpServers: 'Grafana' } } }).length, 1, 'a list, not a name');
+
+  const mine = 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana] }\n';
+  const said = await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana, Sentry] }\n', mine);
+  assert.ok(said.some((m) => /gives the watcher agent the MCP server Sentry, which it reads through outside the sandbox/.test(m)), said.join(' | '));
+  assert.deepEqual(await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana] }\n', 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, Sentry] }\n'), [], 'narrowing it says nothing');
+});

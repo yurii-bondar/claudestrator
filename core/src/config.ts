@@ -27,6 +27,7 @@ interface AgentLayer {
   tools?: string[];
   disallowedTools?: string[];
   mcp?: boolean;
+  mcpServers?: string[];
   maxTurns?: number;
   effort?: Effort;
   runs?: Runs;
@@ -154,6 +155,7 @@ interface Inherited {
   tools?: string[] | undefined;
   disallowedTools?: string[] | undefined;
   mcp?: boolean | undefined;
+  mcpServers?: string[] | undefined;
   maxTurns?: number | undefined;
   effort?: Effort | undefined;
   runs?: Runs | undefined;
@@ -704,6 +706,7 @@ function resolveConfig(layers: Layer[], opts: { flags?: Flags | undefined; readF
       tools: base.tools ?? (base.output === 'code' || base.output === 'tests' ? WRITE : READ_ONLY),
       ...(base.disallowedTools && { disallowedTools: base.disallowedTools }),
       ...(base.mcp !== undefined && { mcp: base.mcp }),
+      ...(base.mcpServers && { mcpServers: base.mcpServers }),
       ...(base.maxTurns !== undefined && { maxTurns: base.maxTurns }),
       ...(base.effort && { effort: base.effort }),
       ...(base.runs && { runs: base.runs }),
@@ -837,6 +840,7 @@ function resolveExtends(drafts: Map<string, Draft>, diags: Diagnostic[]): Map<st
       tools: draft.tools ?? base.tools,
       disallowedTools: draft.disallowedTools ?? base.disallowedTools,
       mcp: draft.mcp ?? base.mcp,
+      mcpServers: draft.mcpServers ?? base.mcpServers,
       maxTurns: draft.maxTurns ?? base.maxTurns,
       effort: draft.effort ?? base.effort,
       runs: draft.runs ?? base.runs,
@@ -1185,6 +1189,8 @@ function loosened(layers: Layer[]): Diagnostic[] {
       const reach = (agent.tools ?? []).filter((t) => (t === 'WebFetch' || t === 'WebSearch' || t.startsWith('WebFetch(') || t.startsWith('mcp__')) && !before.includes(t));
       if (reach.length) agents.push(diag(layer, `gives the ${name} agent ${reach.join(', ')}, which reach${reach.length === 1 ? 'es' : ''} outside the sandbox`));
       if (agent.mcp === true && was && was.mcp === false) agents.push(diag(layer, `turns MCP servers on for the ${name} agent, which reads through them outside the sandbox`));
+      const servers = was && was.mcpServers && agent.mcpServers ? agent.mcpServers.filter((x) => !was.mcpServers!.includes(x)) : [];
+      if (servers.length) agents.push(diag(layer, `gives the ${name} agent the MCP server${servers.length === 1 ? '' : 's'} ${servers.join(', ')}, which it reads through outside the sandbox`));
     }
   }
   return [...out.map((m) => diag(project, m)), ...agents];

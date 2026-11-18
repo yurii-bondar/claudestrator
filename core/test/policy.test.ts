@@ -8,6 +8,7 @@ import { execFileSync } from 'child_process';
 
 import { Engine, cloudIdsFor, commentMismatch, summarizeInput } from '../src/engine';
 import { buildArgs } from '../src/runner';
+import { mcpServerAllowed, mcpToolAllowed, mcpToolPrefix } from '../src/mcp';
 import type { EngineOptions } from '../src/engine';
 import type { RunnerOptions } from '../src/runner';
 import { plainLauncher, type SandboxPolicy } from '../src/sandbox';
@@ -322,4 +323,36 @@ test('policy: an agent with no tools of its own gets those of its kind, and a to
   assert.equal(await may('checker', 'Read', { file_path: path.join(ws, 'README.md') }), true);
   assert.equal(await may('ghost', 'Read', {}), true, 'reads stay reads');
   assert.equal(await may('ghost', 'Bash', { command: 'ls' }), false, 'an agent the config no longer has runs nothing');
+});
+
+test('policy: an agent with mcpServers uses those servers only, by their tool names as Claude Code makes them', async () => {
+  const may = await policy('repos:\n  api: {}\nagents:\n  planner: { mcp: true, mcpServers: [Grafana, "claude.ai Slack", "plugin:figma:figma"], tools: [Read, Grep, ListMcpResourcesTool] }\n');
+  assert.equal(await may('planner', 'mcp__Grafana__get_dashboard_by_uid'), true);
+  assert.equal(await may('planner', 'mcp__claude_ai_Slack__search_messages'), true, 'a name with a dot and a space');
+  assert.equal(await may('planner', 'mcp__plugin_figma_figma__get_metadata'), true, "a plugin's server");
+  assert.equal(await may('planner', 'mcp__Atlassian__getJiraIssue'), false, 'a server it does not name');
+  assert.equal(await may('planner', 'mcp__grafana-stage__get_dashboard_by_uid'), false, 'nor one whose name starts the same');
+  assert.equal(await may('planner', 'ListMcpResourcesTool', { server: 'Grafana' }), true);
+  assert.equal(await may('planner', 'ListMcpResourcesTool', { server: 'Atlassian' }), false);
+  assert.equal(await may('planner', 'ListMcpResourcesTool', {}), false, 'without a server it would list every one');
+  assert.equal(await may('verifier', 'mcp__Atlassian__getJiraIssue'), true, 'an agent without mcpServers still reads through every server');
+});
+
+test('policy: Claude Code is told to leave out the tools of the servers an agent does not use', () => {
+  const opts = { flags: () => new Set<string>(), settingSources: () => null } as Partial<RunnerOptions> as RunnerOptions;
+  const args = buildArgs({ agent: { model: 'sonnet', instructions: '' }, settings: {}, mcpDenied: ['Atlassian', 'claude.ai Slack', 'plugin:figma:figma', 'claude.ai_Slack'] }, opts);
+  const denied = args[args.indexOf('--disallowedTools') + 1]!.split(',');
+  assert.deepEqual(denied.filter((t) => t.startsWith('mcp__')), ['mcp__Atlassian', 'mcp__claude_ai_Slack', 'mcp__plugin_figma_figma'], 'each once, as its tools are named');
+});
+
+test('policy: which of the servers an agent may use, by name', () => {
+  const some = { mcp: true, mcpServers: ['Grafana', 'claude.ai Slack'] };
+  assert.equal(mcpServerAllowed(some, 'Grafana'), true);
+  assert.equal(mcpServerAllowed(some, 'claude.ai Slack'), true);
+  assert.equal(mcpServerAllowed(some, 'Atlassian'), false);
+  assert.equal(mcpServerAllowed({ mcp: false, mcpServers: ['Grafana'] }, 'Grafana'), false, 'mcp: false wins');
+  assert.equal(mcpServerAllowed({}, 'Atlassian'), true, 'unset: every server');
+  assert.equal(mcpToolAllowed(some, 'mcp__Grafana__query_loki_logs'), true);
+  assert.equal(mcpToolAllowed(some, 'mcp__Grafana2__query_loki_logs'), false);
+  assert.equal(mcpToolPrefix('plugin:figma:figma'), 'mcp__plugin_figma_figma');
 });

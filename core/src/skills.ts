@@ -60,6 +60,7 @@ agents:
     effort: high                # low | medium | high | xhigh | max
     tools: [Read, Grep, Glob, Bash]
     mcp: false                  # true: it sees the account's MCP servers (tickets, logs, metrics); false saves tokens
+    # mcpServers: [Grafana]     # with mcp: true, only these servers (names as claude mcp list shows them); unset: all
     color: red                  # red | blue | green | yellow | purple | orange | pink | cyan
     instructions: { mode: append, file: ./prompts/contract-reviewer.md }
 ~~~
@@ -68,7 +69,7 @@ More fields: \`runs: per-repo | all-repos\` (code and tests agents: once per rep
 
 \`instructions\` is a text (it replaces), or \`{ mode, file }\` or \`{ mode, text }\` with \`mode\` one of \`replace\` (the default), \`append\` or \`prepend\` to the instructions of the agent it extends. \`{{dir}}\` in instructions becomes the library's folder: point an agent at the library's own files with it (\`sqlite3 "$DB" < "{{dir}}/sql/schema.sql"\`), wherever the library is kept.
 
-Tools: an agent without \`tools\` gets Read, Grep, Glob and Bash, plus Edit and Write when it writes code or tests. A tool the list does not name is refused when the agent calls it. WebFetch, WebSearch and MCP tools that change something must be named to be used (\`WebFetch(domain:docs.acme.com)\`, \`mcp__github__create_issue\`, the whole server as \`mcp__github\`). Reading through MCP servers (get, search, list, read) needs only \`mcp: true\`.
+Tools: an agent without \`tools\` gets Read, Grep, Glob and Bash, plus Edit and Write when it writes code or tests. A tool the list does not name is refused when the agent calls it. WebFetch, WebSearch and MCP tools that change something must be named to be used (\`WebFetch(domain:docs.acme.com)\`, \`mcp__github__create_issue\`, the whole server as \`mcp__github\`). Reading through MCP servers (get, search, list, read) needs only \`mcp: true\`; \`mcpServers\` narrows it to the servers it names, and Claude Code then shows the agent no tool of the others.
 
 ### Built-in agents
 
@@ -156,7 +157,7 @@ Never tell an agent to commit, push, switch branches, open PRs or post comments:
 - A plan, verdict, readiness or audit agent that replaces its instructions describes its json, as above.
 - A \`parallel\` holds only read-only agents (verdict, readiness, audit), two or more; a \`branch\` is \`on\` a step before it.
 - A scenario either delivers (code or tests agents) or reports (readiness or audit agents), not both.
-- \`mcp: true\` only where an agent reads tickets, logs or docs through MCP; \`tools\` name only what it needs.
+- \`mcp: true\` only where an agent reads tickets, logs or docs through MCP, with \`mcpServers\` naming the ones it reads; \`tools\` name only what it needs.
 - The README says what the library is for, its scenarios, and how to add it.
 `;
 

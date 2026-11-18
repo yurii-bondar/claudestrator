@@ -24,6 +24,7 @@ import { commitSubject, prTitle, prBody } from './pr';
 import { renderReport, jiraText } from './report';
 import type { Live, PermissionRequest, RepoStatus } from './wire';
 import type { ClaudeRunner, ClaudeSession, Limits, SessionRequest, TurnResult } from './runner';
+import { mcpServerAllowed, mcpToolAllowed } from './mcp';
 import { HOOK_TIMEOUT_S, TOKEN_ENV, type HookServer, type Decision, type ToolCall } from './hookserver';
 import { sessionSettings, credentialVars, REGISTRIES, SECRET_PATHS } from './settings';
 import { probeSandbox, sandboxLauncher, sandboxProblem, shq, type Launcher, type SandboxPolicy } from './sandbox';
@@ -1958,11 +1959,15 @@ class Engine extends EventEmitter {
     }
     if (MCP_RESOURCE_TOOLS.has(tool)) {
       if (agent.mcp === false) return blocked(`${tool}: the ${step.agent} agent runs without MCP servers`);
+      // Without a server named, it reads from every one: an agent with some servers only names one of them.
+      const server = typeof input.server === 'string' ? input.server : '';
+      if (agent.mcpServers && !(server && mcpServerAllowed(agent, server))) return blocked(`${tool}${server ? ` of ${server}` : ''}: the ${step.agent} agent uses only the MCP servers ${agent.mcpServers.join(', ')}${server ? '' : '; name one of them as the server'}`);
       const strange = strangeHosts(input, webHosts);
       if (strange.length) return blocked(`${tool} names ${strange.join(', ')}: an MCP server may fetch it, outside the sandbox. Add the host to policy.network`);
     }
     if (tool.startsWith('mcp__')) {
       if (agent.mcp === false) return blocked(`${tool}: the ${step.agent} agent runs without MCP servers`);
+      if (!mcpToolAllowed(agent, tool)) return blocked(`${tool}: the ${step.agent} agent uses only the MCP servers ${(agent.mcpServers ?? []).join(', ')}`);
       const listed = Boolean(agent.tools && agent.tools.some((rule) => mcpRuleCovers(rule, tool)));
       if (!listed && !mcpReads(mcpAction(tool))) return blocked(`${tool} may change something outside the repos; the ${step.agent} agent calls it only when its tools name it (tools: [${tool}])`);
       const strange = listed ? [] : strangeHosts(input, webHosts);

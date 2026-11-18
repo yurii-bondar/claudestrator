@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import { getChildEnv, launch } from './git';
 import { GITHUB_TOKENS } from './settings';
 import type { TranscriptItem } from './store';
+import { mcpServerAllowed, mcpToolPrefix } from './mcp';
 import type { Agent } from './types';
 
 /**
@@ -107,10 +108,12 @@ interface RunnerOptions {
   env(): NodeJS.ProcessEnv;
   /** The account's MCP servers as an `--mcp-config` file, for agents run without the `user` setting source. */
   mcpConfig?(): Promise<string | null>;
+  /** The names of the MCP servers Claude Code loads for the account: an agent with some of them is denied the rest. */
+  mcpServers?(): Promise<string[]>;
 }
 
 /** The part of an agent definition a session needs. */
-type SessionAgent = Pick<Agent, 'instructions' | 'model'> & Partial<Pick<Agent, 'effort' | 'tools' | 'disallowedTools' | 'mcp' | 'maxTurns'>>;
+type SessionAgent = Pick<Agent, 'instructions' | 'model'> & Partial<Pick<Agent, 'effort' | 'tools' | 'disallowedTools' | 'mcp' | 'mcpServers' | 'maxTurns'>>;
 
 interface SessionRequest {
   agent: SessionAgent;
@@ -124,6 +127,11 @@ interface SessionRequest {
   maxBudgetUsd?: number | undefined;
   /** Filled in by the runner: the `--mcp-config` file, if the session gets one. */
   mcpConfig?: string | null | undefined;
+  /**
+   * Filled in by the runner: the MCP servers an agent with `mcpServers` may not use. Denied by name (`mcp__<server>`),
+   * Claude Code leaves their tools out of every turn; the guard refuses them in any case.
+   */
+  mcpDenied?: string[] | undefined;
   /** The JSON Schema of the data a turn hands over (`--json-schema`); it comes back as `TurnResult.structured`. */
   jsonSchema?: Record<string, unknown> | undefined;
   onOutput(item: TranscriptItem): void;
@@ -227,11 +235,14 @@ class ClaudeRunner {
     const sources = this.opts.settingSources();
     // Without the user source, the account's own MCP servers come in explicitly.
     const wantsMcp = req.agent.mcp !== false && this.opts.mcpConfig && (!sources || !sources.includes('user'));
-    return new ClaudeSession({ ...req, mcpConfig: wantsMcp ? await this.opts.mcpConfig!() : null }, this.opts);
+    const agent = req.agent;
+    const known = agent.mcp !== false && agent.mcpServers && this.opts.mcpServers ? await this.opts.mcpServers().catch(() => []) : [];
+    const denied = known.filter((name) => !mcpServerAllowed(agent, name));
+    return new ClaudeSession({ ...req, mcpConfig: wantsMcp ? await this.opts.mcpConfig!() : null, ...(denied.length && { mcpDenied: denied }) }, this.opts);
   }
 }
 
-function buildArgs(req: Pick<SessionRequest, 'agent' | 'additionalDirectories' | 'maxBudgetUsd' | 'name' | 'mcpConfig' | 'settings' | 'jsonSchema'>, opts: RunnerOptions): string[] {
+function buildArgs(req: Pick<SessionRequest, 'agent' | 'additionalDirectories' | 'maxBudgetUsd' | 'name' | 'mcpConfig' | 'mcpDenied' | 'settings' | 'jsonSchema'>, opts: RunnerOptions): string[] {
   const a = req.agent;
   const has = (f: string): boolean => opts.flags().has(f);
   const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose'];
@@ -242,7 +253,7 @@ function buildArgs(req: Pick<SessionRequest, 'agent' | 'additionalDirectories' |
   if (a.maxTurns && has('--max-turns')) args.push('--max-turns', String(a.maxTurns));
   // --tools picks from the built-in set; an MCP tool an agent lists is for the guard, which allows it.
   if (a.tools && has('--tools')) args.push('--tools', a.tools.filter((t) => !t.startsWith('mcp__')).join(','));
-  const disallowed = [...ALWAYS_DISALLOWED, ...(a.disallowedTools || [])];
+  const disallowed = [...ALWAYS_DISALLOWED, ...(a.disallowedTools || []), ...new Set((req.mcpDenied || []).map(mcpToolPrefix))];
   args.push('--disallowedTools', disallowed.join(','));
   const sources = opts.settingSources();
   if (sources && has('--setting-sources')) args.push('--setting-sources', sources.join(','));

@@ -57,6 +57,8 @@ interface McpView extends View {
   load(refresh?: boolean): Promise<void>;
   render(): void;
   row(x: McpServerView, opts: { checking: boolean; hidden: boolean }): string;
+  /** The agents that use a server, as a menu that gives it to one or takes it away. */
+  agentsMenu(server: string): string;
 }
 
 // Merges into `Views` of globals.d.ts, which is where the shell reads these screens.
@@ -297,7 +299,9 @@ interface Views {
         const field = el.dataset.field;
         const text = el.value.trim();
         if (field === 'description' && !text) return toast('An agent needs a description', 'warn');
-        const value = field === 'tools' || field === 'disallowedTools' ? (text ? text.split(/[\s,]+/).filter(Boolean) : null) : text;
+        // A server's name may have spaces ("claude.ai Slack"): its list is split at commas only.
+        const items = field === 'mcpServers' ? text.split(',').map((x) => x.trim()) : text.split(/[\s,]+/);
+        const value = field === 'tools' || field === 'disallowedTools' || field === 'mcpServers' ? (text ? items.filter(Boolean) : null) : text;
         if (await save('updateAgent', { name: el.dataset.name, patch: { [field]: value } })) views.agents.load();
       },
       'na-base': (el) => {
@@ -399,6 +403,7 @@ interface Views {
           <label class="field"><span>Never allowed</span><input class="input mono" data-change="agent-field" data-field="disallowedTools" data-name="${esc(a.name)}" value="${esc((a.disallowedTools || []).join(', '))}" placeholder="WebFetch"></label>
         </div>
         <label class="check-line" title="Every MCP server adds its tool list to each turn. Off: this agent sees none."><input type="checkbox" data-change="agent-mcp" data-name="${esc(a.name)}" ${a.mcp === false ? '' : 'checked'}><span>MCP servers (Jira, Grafana, docs…) <span class="muted">turn off for agents that only work on the repo</span></span></label>
+        ${a.mcp === false ? '' : `<label class="field"><span>Only these MCP servers <span class="muted">(names as Integrations lists them, comma separated; empty = every one)</span></span><input class="input mono" data-change="agent-field" data-field="mcpServers" data-name="${esc(a.name)}" value="${esc((a.mcpServers || []).join(', '))}" placeholder="Atlassian, Grafana"></label>`}
         <div class="field-row two">
           <label class="field"><span>Color</span><select class="input" data-change="agent-color" data-name="${esc(a.name)}">${['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'].map((c) => `<option ${c === a.color ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
           <div class="field"><span>Instructions come from</span><div class="sources">${a.instructionSources.map((s) => `<div class="mono small"><span class="chip small">${esc(s.mode)}</span> ${esc(s.source)}</div>`).join('') || '<span class="muted">nowhere</span>'}</div></div>
@@ -698,6 +703,19 @@ interface Views {
     const layer = c.layer || {};
     const fromProject = (keyPath: string[]) => keyPath.reduce<unknown>((o, k) => (isRecord(o) ? o[k] : undefined), layer) !== undefined;
     return (keyPath: string[]) => (fromProject(keyPath) ? '<span class="chip small" title="Set in this workspace\'s config.yaml">workspace</span>' : '');
+  }
+
+  /** Whether an agent sees an MCP server, as its config says: none with `mcp: false`, else every one or the ones it names. */
+  const seesServer = (a: AgentView, server: string): boolean => a.mcp !== false && (!a.mcpServers || a.mcpServers.includes(server));
+
+  /**
+   * The change to an agent that gives it a server (`on`) or takes it away. Taken from an agent that sees every one, it
+   * keeps the others there are (`all`); the last one taken leaves it with no MCP servers.
+   */
+  function serverPatch(a: AgentView, server: string, on: boolean, all: string[]): Record<string, unknown> {
+    if (on) return a.mcp === false ? { mcp: true, mcpServers: [server] } : { mcpServers: [...(a.mcpServers || []), server] };
+    const rest = (a.mcpServers || all).filter((x) => x !== server);
+    return rest.length ? { mcpServers: rest } : { mcp: false, mcpServers: null };
   }
 
   /** Whether a card of the Integrations page is open: each is folded to its name and status until you open it. */
@@ -1085,6 +1103,25 @@ interface Views {
           ${hiddenOpen ? `<div class="mcp-list mcp-hidden">${hidden.map((x) => this.row(x, { checking: m.checking, hidden: true })).join('')}</div>` : ''}` : ''}`
       );
     },
+    agentsMenu(server) {
+      const c = this.c;
+      if (!c || !c.ok || !c.agents.length) return '';
+      const using = c.agents.filter((a) => seesServer(a, server));
+      const label = using.length === c.agents.length ? 'All agents' : using.length ? plural(using.length, 'agent') : 'No agent';
+      const item = (a: AgentView) => {
+        const on = seesServer(a, server);
+        const reach = a.mcp === false ? 'no MCP servers' : a.mcpServers ? `${plural(a.mcpServers.length, 'server')} of its own` : 'every server';
+        return `<button role="menuitemcheckbox" aria-checked="${on}" data-action="mcp-agent" data-server="${esc(server)}" data-agent="${esc(a.name)}">${on ? icon('check') : '<span class="ic"></span>'}<span class="${agentColor(a.color)}"><span class="adot"></span></span><span class="grow">${esc(a.name)}${a.enabled ? '' : ' <span class="muted small">off</span>'}</span><span class="muted small">${reach}</span></button>`;
+      };
+      return `<span class="menu-wrap mcp-agents" data-server="${esc(server)}">
+        <button class="btn ghost sm" data-action="eff-menu" aria-haspopup="menu" title="${esc(using.length ? `Used by ${using.map((a) => a.name).join(', ')}` : 'No agent uses it')}">${icon('users')}${label}<span class="sc-caret">▾</span></button>
+        <div class="menu mcp-agents-menu" role="menu">
+          <div class="menu-title">Agents that use ${esc(server)}</div>
+          ${c.agents.map(item).join('')}
+          <div class="menu-note muted small">${icon('info')}An agent without the tick does not see its tools.</div>
+        </div>
+      </span>`;
+    },
     row(x, { checking, hidden }) {
       const st = MCP_STATE[x.state] || MCP_INSTALLED;
       const detailText = x.disabled ? 'disabled for this project' : x.pending ? 'waiting for your approval in Claude Code' : x.detail && x.detail.toLowerCase() !== st.label.toLowerCase() ? x.detail : '';
@@ -1103,6 +1140,7 @@ interface Views {
           <span class="mcp-state s-${x.state} ${x.missing ? 'missing' : ''}">${esc(label)}${detailText ? `<span class="muted"> · ${esc(detailText)}</span>` : ''}</span>
           <span class="mcp-actions">
             ${x.canLogin ? (login ? `<button class="btn sm" data-action="mcp-show-login" data-name="${esc(x.name)}">${icon('terminal')}Show terminal</button><button class="btn ghost sm" data-action="mcp-cancel" data-name="${esc(x.name)}">${icon('x')}Cancel</button>` : `<button class="btn ${bad ? 'primary' : 'ghost'} sm" data-action="mcp-login" data-name="${esc(x.name)}" title="Runs claude mcp login: the provider's sign-in page opens in your browser">${icon('key')}${x.state === 'connected' ? 'Sign in again' : 'Sign in'}</button>`) : ''}
+            ${this.agentsMenu(x.name)}
             <button class="btn ghost sm" data-action="mcp-details" data-name="${esc(x.name)}">${icon(opened ? 'x' : 'info')}${opened ? 'Hide details' : 'Details'}</button>
             <button class="btn ghost sm" data-action="mcp-hide" data-name="${esc(x.name)}" data-hidden="${hidden ? '0' : '1'}" title="${hidden ? 'Show it, and count its errors again' : 'Hide it: its errors count in no warning. The agents still have it.'}">${icon(hidden ? 'eye' : 'eyeOff')}${hidden ? 'Show' : 'Hide'}</button>
           </span>
@@ -1162,6 +1200,18 @@ interface Views {
         S.ui.integrationsOpen = { ...S.ui.integrationsOpen, [key]: !integrationOpen(key) };
         persist();
         views.mcp.render();
+      },
+      'mcp-agent': async (el) => {
+        const c = views.mcp.c;
+        const a = c && c.ok ? c.agents.find((x) => x.name === el.dataset.agent) : undefined;
+        const server = el.dataset.server ?? '';
+        if (!a || !server) return;
+        const on = !seesServer(a, server);
+        const change = serverPatch(a, server, on, (views.mcp.m ? views.mcp.m.servers : []).map((x) => x.name));
+        if (!(await save('updateAgent', { name: a.name, patch: change }, `${a.name} ${on ? 'uses' : 'no longer uses'} ${server}`))) return;
+        await views.mcp.load();
+        // The menu stays open, for the next agent.
+        $$('.mcp-agents').find((w) => w.dataset.server === server)?.classList.add('open');
       },
       'mcp-hidden-fold': () => {
         S.ui.mcpHiddenOpen = !S.ui.mcpHiddenOpen;

@@ -1033,6 +1033,9 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .mcp-state.s-installed { color: var(--cs-status-warn-text); }
 .mcp-state.s-failed, .mcp-state.s-needs_auth { color: var(--cs-status-err-text); }
 .mcp-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+/* Integrations: the agents that use a server, ticked in its menu. */
+.mcp-agents-menu { width: 300px; max-width: calc(100vw - 40px); }
+.mcp-agents-menu .menu-title { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); padding: 4px 10px 6px; }
 /* The servers you hid: folded under one row, dimmed when listed. */
 /* Integrations: a card folded to its name and status until you open it; its name is the button. */
 .integ-card h3 { margin-bottom: 0; }
