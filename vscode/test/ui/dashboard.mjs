@@ -6,7 +6,7 @@
 import test, { after, before } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -183,6 +183,62 @@ test("composer: the scenarios menu lists each by its name; what one does shows o
   assert.equal(await b.eval(`getComputedStyle(${tip}).display`), 'block', 'on its ⓘ');
   await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
   await b.eval(`document.querySelector('.sc-select').classList.remove('open'); true`);
+});
+
+test('sync: picked repos pull their default branch, a set of them is kept, and the merged branches go once confirmed', async () => {
+  // A repo of its own, with an origin on disk: main, and a branch already merged into it there.
+  const g = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
+  const origin = path.join(ws, '..', `svc-origin-${process.pid}.git`);
+  const svc = path.join(ws, 'svc');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
+  execFileSync('git', ['clone', '-q', origin, svc]);
+  g(svc, 'checkout', '-q', '-b', 'main');
+  writeFileSync(path.join(svc, 'a.txt'), 'a\n');
+  g(svc, 'add', 'a.txt');
+  g(svc, 'commit', '-q', '-m', 'a');
+  g(svc, 'checkout', '-q', '-b', 'feat/done');
+  writeFileSync(path.join(svc, 'b.txt'), 'b\n');
+  g(svc, 'add', 'b.txt');
+  g(svc, 'commit', '-q', '-m', 'b');
+  g(svc, 'checkout', '-q', 'main');
+  g(svc, 'merge', '-q', '--no-ff', '-m', 'Merge feat/done', 'feat/done');
+  g(svc, 'push', '-q', '-u', 'origin', 'main', 'feat/done');
+  g(svc, 'remote', 'set-head', 'origin', 'main');
+  await b.eval(`(async () => { await window.CS.call('saveRepo', { name: 'svc', layer: { path: 'svc' } }); window.CS.S.ui.syncRepos = ['svc']; await window.CS.go({ name: 'sync' }); return true; })()`);
+  try {
+    await until(`!!document.querySelector('[data-change="sync-pick"][data-name="svc"]')`, 'the repos to pick');
+    const ticked = () => b.eval(`[...document.querySelectorAll('[data-change="sync-pick"]')].filter((c) => c.checked).map((c) => c.dataset.name)`);
+    assert.deepEqual(await ticked(), ['svc'], 'the repos picked last');
+    assert.match(await textOf(`document.querySelector('.nav-item.active')`), /Repos & checks/, 'under Repos & checks');
+
+    // A set: saved under a name, and picked again with one click.
+    await b.eval(`document.querySelector('#sync-set-name').value = 'Services'; document.querySelector('[data-action="sync-set-save"]').click(); true`);
+    await until(`!!document.querySelector('[data-action="sync-set"][data-name="Services"]')`, 'the set');
+    assert.deepEqual((await b.eval(`window.CS.call('repos')`)).repoSets, { Services: ['svc'] });
+    await b.eval(`document.querySelector('[data-action="sync-none"]').click(); true`);
+    assert.deepEqual(await ticked(), []);
+    await b.eval(`document.querySelector('[data-action="sync-set"][data-name="Services"]').click(); true`);
+    assert.deepEqual(await ticked(), ['svc']);
+
+    await b.eval(`document.querySelector('[data-action="sync-run"]').click(); true`);
+    await until(`!!document.querySelector('.sync-result')`, 'the result');
+    assert.match(await textOf(`document.querySelector('.sync-result')`), /main is up to date/);
+    const offered = () => b.eval(`[...document.querySelectorAll('.sync-del')].map((c) => c.dataset.id + (c.checked ? '' : ' (unticked)'))`);
+    assert.deepEqual(await offered(), ['svc:local:feat/done', 'svc:origin:feat/done']);
+
+    // An untick stays when the page is drawn again; deleting asks once more first.
+    await b.eval(`(() => { const c = document.querySelector('.sync-del[data-id="svc:origin:feat/done"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    await b.eval(`window.CS.views.sync.render(); true`);
+    assert.deepEqual(await offered(), ['svc:local:feat/done', 'svc:origin:feat/done (unticked)']);
+    await b.eval(`document.querySelector('[data-action="sync-confirm"]').click(); true`);
+    assert.equal(g(svc, 'branch', '--list', 'feat/done'), 'feat/done', 'nothing deleted before the second press');
+    await b.eval(`document.querySelector('[data-action="sync-delete"]').click(); true`);
+    await until(`!!document.querySelector('.sync-branch.gone')`, 'the branch deleted');
+    assert.equal(g(svc, 'branch', '--list', 'feat/done'), '', 'the local branch is gone');
+    assert.match(g(svc, 'ls-remote', '--heads', 'origin', 'feat/done'), /feat\/done/, 'the unticked one on origin stays');
+  } finally {
+    await b.eval(`(async () => { await window.CS.call('setValue', { keyPath: ['repoSets', 'Services'], value: null }); await window.CS.call('removeRepo', { name: 'svc' }); window.CS.S.ui.syncRepos = undefined; window.CS.S.ui.syncSkip = undefined; return true; })()`);
+  }
 });
 
 test("tools: GitLab's CLI shows once installed; with it ready, a missing gh is not a problem", async () => {
