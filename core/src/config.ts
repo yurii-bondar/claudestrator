@@ -27,6 +27,7 @@ interface AgentLayer {
   tools?: string[];
   disallowedTools?: string[];
   mcp?: boolean;
+  mcpServers?: string[];
   maxTurns?: number;
   effort?: Effort;
   runs?: Runs;
@@ -81,6 +82,8 @@ interface ConfigLayer {
   context?: string[];
   groups?: Record<string, GroupLayer>;
   instructions?: Record<string, InstructionLayer>;
+  /** Lists of repos kept under a name, for syncing them together. */
+  repoSets?: Record<string, string[]>;
 }
 
 interface Layer {
@@ -127,6 +130,7 @@ interface Merged {
   scenarios: Record<string, ScenarioEntry>;
   groups: Record<string, GroupLayer>;
   instructions: Record<string, InstructionLayer>;
+  repoSets: Record<string, string[]>;
   origins: Record<string, unknown>;
   pipeline?: { names: string[]; source: string };
   language?: string;
@@ -154,6 +158,7 @@ interface Inherited {
   tools?: string[] | undefined;
   disallowedTools?: string[] | undefined;
   mcp?: boolean | undefined;
+  mcpServers?: string[] | undefined;
   maxTurns?: number | undefined;
   effort?: Effort | undefined;
   runs?: Runs | undefined;
@@ -183,7 +188,7 @@ ${COMMON}
 2. For each candidate repo, read its CLAUDE.md and .claude/rules, then the code you would change. Name real files and symbols.
 3. List every contract the change crosses, with producer and consumers.
 4. Plan only what the ticket asks for; list tempting extras under "Out of scope".
-5. Ask a question only when two readings of the ticket lead to different code, and give the default you would pick. Mark it "blocking": true when only the user can decide it (a text legal must approve, a business decision) or when no default is safe to build on: the task then waits for the answer before any agent changes code.
+5. Ask a question only when two readings of the ticket lead to different code, and give the default you would pick. When it has a few answers, list the others as "options" (short, each one answer the user can pick as it is, the default not among them); leave them out for an open question. When your default leaves part of the work for a task of its own (another ticket, a later change), say what that task would do in one sentence as "followUp": the user can start it from the plan. Mark it "blocking": true when only the user can decide it (a text legal must approve, a business decision) or when no default is safe to build on: the task then waits for the answer before any agent changes code.
 6. The prompt lists each repository's base branch. If the work in one must start from another branch (the ticket names it, or the code it changes is only there: look with git branch -a and git log origin/<branch>), add "baseBranch": "<branch>" to that repo in the json: the task's branch starts from it and its PR goes into it. Leave it out otherwise.
 7. Give each repo of the plan a mode: "full" when its code changes (its developer works there, then the tester); "tests_only" when only its tests change, to cover a contract another repo changes (no developer runs there, only the tester).
 8. List the repos in the json in the order they must change and merge: a producer before its consumers, as the workspace's merge order says when its context has one. Developers run in that order, and each PR gives it as the merge order.
@@ -197,7 +202,7 @@ Write the plan in these sections, in this order:
 - "## Out of scope": the extras from step 4.
 
 ${HAND_OVER}
-{"type": "feat|fix|chore|refactor", "slug": "<kebab-case>", "title": "<short imperative English description, lowercase: the commit subject>", "repos": [{"name": "<repo>", "mode": "full|tests_only", "baseBranch": "<only as step 6 says; else leave this key out>"}], "openQuestions": [{"question": "...", "default": "...", "blocking": false}]}`;
+{"type": "feat|fix|chore|refactor", "slug": "<kebab-case>", "title": "<short imperative English description, lowercase: the commit subject>", "repos": [{"name": "<repo>", "mode": "full|tests_only", "baseBranch": "<only as step 6 says; else leave this key out>"}], "openQuestions": [{"question": "...", "default": "...", "options": ["<another answer>"], "followUp": "<only as step 5 says; else leave this key out>", "blocking": false}]}`;
 
 const DEVELOPER = `You implement one repository's part of an approved plan, or fix review findings there.
 
@@ -608,7 +613,7 @@ function toOp(layer: Layer, input: InstructionsInput | undefined): InstructionOp
 }
 
 function mergeLayers(layers: Layer[]): Merged {
-  const merged: Merged = { agents: new Map(), limits: {}, repos: new Map(), jira: {}, policy: {}, scenarios: {}, groups: {}, instructions: {}, origins: {}, intake: {} };
+  const merged: Merged = { agents: new Map(), limits: {}, repos: new Map(), jira: {}, policy: {}, scenarios: {}, groups: {}, instructions: {}, repoSets: {}, origins: {}, intake: {} };
   for (const layer of layers) {
     const c = layer.config;
     for (const [name, agent] of Object.entries(c.agents ?? {})) {
@@ -624,6 +629,7 @@ function mergeLayers(layers: Layer[]): Merged {
     // Groups and instructions too: a later layer replaces the whole entry.
     Object.assign(merged.groups, clone(c.groups ?? {}));
     Object.assign(merged.instructions, clone(c.instructions ?? {}));
+    Object.assign(merged.repoSets, clone(c.repoSets ?? {}));
     if (c.limits) merged.limits = { ...merged.limits, ...defined(c.limits) };
     if (c.language) merged.language = c.language;
     if (c.baseBranch) merged.baseBranch = c.baseBranch;
@@ -704,6 +710,7 @@ function resolveConfig(layers: Layer[], opts: { flags?: Flags | undefined; readF
       tools: base.tools ?? (base.output === 'code' || base.output === 'tests' ? WRITE : READ_ONLY),
       ...(base.disallowedTools && { disallowedTools: base.disallowedTools }),
       ...(base.mcp !== undefined && { mcp: base.mcp }),
+      ...(base.mcpServers && { mcpServers: base.mcpServers }),
       ...(base.maxTurns !== undefined && { maxTurns: base.maxTurns }),
       ...(base.effort && { effort: base.effort }),
       ...(base.runs && { runs: base.runs }),
@@ -796,6 +803,8 @@ function resolveConfig(layers: Layer[], opts: { flags?: Flags | undefined; readF
       git: { mode: merged.gitMode ?? 'branch' },
       groups,
       instructions: Object.fromEntries(Object.entries(merged.instructions).map(([id, x]) => [id, { id, label: x.label, text: x.text }])),
+      // A set keeps the repos the config still has: one removed since drops out of it.
+      repoSets: Object.fromEntries(Object.entries(merged.repoSets).map(([name, list]) => [name, list.filter((r) => repos[r])])),
       sources: [...sources],
     },
   };
@@ -837,6 +846,7 @@ function resolveExtends(drafts: Map<string, Draft>, diags: Diagnostic[]): Map<st
       tools: draft.tools ?? base.tools,
       disallowedTools: draft.disallowedTools ?? base.disallowedTools,
       mcp: draft.mcp ?? base.mcp,
+      mcpServers: draft.mcpServers ?? base.mcpServers,
       maxTurns: draft.maxTurns ?? base.maxTurns,
       effort: draft.effort ?? base.effort,
       runs: draft.runs ?? base.runs,
@@ -1185,6 +1195,8 @@ function loosened(layers: Layer[]): Diagnostic[] {
       const reach = (agent.tools ?? []).filter((t) => (t === 'WebFetch' || t === 'WebSearch' || t.startsWith('WebFetch(') || t.startsWith('mcp__')) && !before.includes(t));
       if (reach.length) agents.push(diag(layer, `gives the ${name} agent ${reach.join(', ')}, which reach${reach.length === 1 ? 'es' : ''} outside the sandbox`));
       if (agent.mcp === true && was && was.mcp === false) agents.push(diag(layer, `turns MCP servers on for the ${name} agent, which reads through them outside the sandbox`));
+      const servers = was && was.mcpServers && agent.mcpServers ? agent.mcpServers.filter((x) => !was.mcpServers!.includes(x)) : [];
+      if (servers.length) agents.push(diag(layer, `gives the ${name} agent the MCP server${servers.length === 1 ? '' : 's'} ${servers.join(', ')}, which it reads through outside the sandbox`));
     }
   }
   return [...out.map((m) => diag(project, m)), ...agents];
@@ -1497,8 +1509,15 @@ async function updateAgentConfig(workspace: string, agent: string, patch: Record
   if (issues.length) throw new Error(`invalid agent change: ${issues.join('; ')}`);
   return editProjectConfig(workspace, (doc) => {
     for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === null) doc.deleteIn(['agents', agent, key]);
-      else writeIn(doc, ['agents', agent, key], value);
+      // An agent the project's config does not change yet has nothing to remove.
+      if (value === undefined || value === null) {
+        if (doc.hasIn(['agents', agent, key])) doc.deleteIn(['agents', agent, key]);
+      } else writeIn(doc, ['agents', agent, key], value);
+    }
+    // Back to the definition below it: no `planner: {}` or `agents: {}` left behind.
+    for (const at of [['agents', agent], ['agents']]) {
+      const node = doc.getIn(at, true) as YamlCollection | undefined;
+      if (node && node.items && node.items.length === 0) doc.deleteIn(at);
     }
   });
 }

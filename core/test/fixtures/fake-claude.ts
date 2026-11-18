@@ -202,7 +202,10 @@ function main(): void {
     const sections = repos.map((r) => `### ${r.name}\n- do it`).join('\n\n');
     // FAKE_PLAN_BLOCKING: a question only the user can answer, until a prompt carries the user's answer.
     const blocking = process.env.FAKE_PLAN_BLOCKING && !/Feedback from the user, verbatim:/.test(firstPrompt) ? [{ question: process.env.FAKE_PLAN_BLOCKING, default: 'change nothing', blocking: true }] : [];
-    const data = `\`\`\`json\n${JSON.stringify({ type: 'feat', slug, title: 'add the feature', repos, openQuestions: blocking })}\n\`\`\``;
+    // FAKE_PLAN_QUESTIONS: the plan's open questions as JSON, until the user's answers come back; its prompt is kept to read.
+    if (process.env.FAKE_PLAN_QUESTIONS && state) fs.writeFileSync(path.join(state, 'prompt-planner.txt'), firstPrompt);
+    const asked = process.env.FAKE_PLAN_QUESTIONS && !/Feedback from the user, verbatim:/.test(firstPrompt) ? (JSON.parse(process.env.FAKE_PLAN_QUESTIONS) as unknown[]) : [];
+    const data = `\`\`\`json\n${JSON.stringify({ type: 'feat', slug, title: 'add the feature', repos, openQuestions: [...blocking, ...asked] })}\n\`\`\``;
     return reply(text ? `## Summary\n\nAdd the feature to every repo.\n\n## Steps\n\n${sections}\n\n${data}` : `\n${data}`, uuid);
   }
 

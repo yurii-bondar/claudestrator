@@ -108,6 +108,7 @@ test('PR review: a pull request link is reviewed in a worktree at its head, and 
     assert.match(ctx.text, /### Findings\n\n- \*\*Minor\*\* `README\.md:99` the cap is not documented/, 'off the diff: in the summary, without the repo before its path');
     assert.equal(posted.length, 0, 'nothing posted before you say so');
     assert.deepEqual(ctx.review!.items.map((i) => [i.severity, i.path, i.line, i.inline]), [['major', 'src/cap.js', 2, true], ['minor', 'README.md', 99, false]], 'each finding, where it would go, to untick');
+    assert.deepEqual([ctx.review!.repo, ctx.review!.head], ['api', 'feat/cap'], 'where a task that fixes them starts');
 
     // The minor one unticked: it goes nowhere.
     const minor = ctx.review!.items.find((i) => i.severity === 'minor')!.id;

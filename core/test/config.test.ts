@@ -405,3 +405,40 @@ test("config: the built-in agents leave git and how a json is handed over to the
     if (/End with the json/.test(agent.instructions)) assert.match(agent.instructions, /the prompt says how to hand it over/, name);
   }
 });
+
+test('config: an agent uses only the MCP servers its mcpServers names, inherited like its other fields; a project that adds one says so', async () => {
+  const ws = workspace('agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, "claude.ai Slack"] }\n  night-watcher: { extends: watcher }\n');
+  const r = passed(await config.loadConfig({ workspace: ws, home: tmp('cs-home-') }));
+  assert.deepEqual(r.config.agents.watcher!.mcpServers, ['Grafana', 'claude.ai Slack']);
+  assert.deepEqual(r.config.agents['night-watcher']!.mcpServers, ['Grafana', 'claude.ai Slack'], 'from the agent it extends');
+  assert.equal(r.config.agents.planner!.mcpServers, undefined, 'unset: every server');
+  assert.deepEqual(validateConfigLayer({ agents: { watcher: { mcpServers: 'Grafana' } } }).length, 1, 'a list, not a name');
+
+  const mine = 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana] }\n';
+  const said = await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana, Sentry] }\n', mine);
+  assert.ok(said.some((m) => /gives the watcher agent the MCP server Sentry, which it reads through outside the sandbox/.test(m)), said.join(' | '));
+  assert.deepEqual(await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana] }\n', 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, Sentry] }\n'), [], 'narrowing it says nothing');
+});
+
+test('config: repo sets are kept by name, of the repos the config has; a name or a list that is not one is refused', async () => {
+  const ws = workspace('repos:\n  api: {}\n  web: {}\nrepoSets:\n  Backend: [api, gone]\n  "All of it": [api, web]\n');
+  const r = passed(await config.loadConfig({ workspace: ws, home: tmp('cs-home-') }));
+  assert.deepEqual(r.config.repoSets, { Backend: ['api'], 'All of it': ['api', 'web'] }, 'a repo removed since drops out of its set');
+  assert.equal(validateConfigLayer({ repoSets: { '-oops': ['api'] } }).length, 1, 'a name starts with a letter or a digit');
+  assert.equal(validateConfigLayer({ repoSets: { Backend: [] } }).length, 1, 'a set names at least one repo');
+  assert.equal(validateConfigLayer({ repoSets: { Backend: ['../etc'] } }).length, 1, 'a repo name, not a path');
+  assert.deepEqual(passed(await config.loadConfig({ workspace: workspace('repos:\n  api: {}\n'), home: tmp('cs-home-') })).config.repoSets, {});
+});
+
+test("config edits: unsetting a field of an agent the project's config does not name changes nothing, and an emptied agent leaves no trace", async () => {
+  for (const [start, end] of [
+    ['repos:\n  api: {}\n', 'repos:\n  api: {}\n'],
+    ['agents:\n  developer: { model: opus }\n', 'agents:\n  developer: { model: opus }\n'],
+    ['agents:\n  planner: { effort: high }\n  developer: { model: opus }\n', 'agents:\n  developer: { model: opus }\n'],
+    ['agents:\n  planner: { effort: high }\nrepos:\n  api: {}\n', 'repos:\n  api: {}\n'],
+  ]) {
+    const ws = workspace(start!);
+    await config.updateAgentConfig(ws, 'planner', { effort: null, mcpServers: null });
+    assert.equal(fs.readFileSync(path.join(ws, '.claudestrator', 'config.yaml'), 'utf8'), end, start);
+  }
+});

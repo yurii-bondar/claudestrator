@@ -117,7 +117,7 @@ async function capture({ screen, theme }) {
     await b.goto(PREVIEW);
     await b.eval(FIX);
     await b.eval(applyTheme(theme));
-    if (screen === 'panel-folded') await b.eval('window.CS.S.ui.tasksOpen = false; true');
+    await b.eval(`window.CS.S.ui.tasksOpen = ${screen !== 'panel-folded'}; true`);
     if (TASK_SCREENS.has(screen)) {
       await b.eval(`window.CS.go({ name: 'home' })`);
       await until(b, `!!document.querySelector('.task-card')`);

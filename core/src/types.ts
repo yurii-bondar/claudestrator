@@ -124,6 +124,10 @@ export interface PlanQuestion {
    * the answer: the plan waits for it, also in a task that runs on its own.
    */
   blocking?: boolean;
+  /** Other answers the user may pick, besides the default: when the question has a few. */
+  options?: string[];
+  /** The default leaves part of the work for a task of its own: what that task would do, to start it from the plan. */
+  followUp?: string;
 }
 
 export interface Finding {
@@ -233,6 +237,11 @@ export interface Agent {
   disallowedTools?: string[];
   /** `false`: the agent sees no MCP servers at all. Unset: the ones Claude Code loads for it. */
   mcp?: boolean;
+  /**
+   * Only these of the MCP servers, by the names Claude Code lists them with (`claude mcp list`); unset: every one.
+   * Nothing without `mcp`.
+   */
+  mcpServers?: string[];
   maxTurns?: number;
   effort?: Effort;
   runs?: Runs;
@@ -370,6 +379,8 @@ export interface Config {
   git: { mode: GitMode };
   groups: Record<string, TaskGroup>;
   instructions: Record<string, TaskInstruction>;
+  /** Lists of repos kept under a name (Repos & checks → Sync), of the repos the config has. */
+  repoSets: Record<string, string[]>;
   /** Every file the config is read from: config and library files (also where none is yet), instruction and context files. */
   sources: string[];
 }

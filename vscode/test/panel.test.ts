@@ -449,3 +449,61 @@ test("panel: the tools' health has GitLab's CLI and the Linear MCP server, next 
   assert.equal(h.linearMcp, 'linear');
   assert.equal(h.atlassianMcp, 'Atlassian');
 });
+
+test('panel: Sync pulls the configured repos named, with the tasks still running their branches kept, and deletes only what it found', async () => {
+  const sync = require('../../core/src/sync') as { syncRepo: unknown; deleteMerged: unknown };
+  const real = { syncRepo: sync.syncRepo, deleteMerged: sync.deleteMerged };
+  const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-sync-ws-')));
+  const asked: { repo: string; dir: string; unfinished: boolean[] }[] = [];
+  const branch = (scope: 'local' | 'origin', name: string) => ({ id: `api:${scope}:${name}`, repo: 'api', scope, branch: name });
+  sync.syncRepo = async ({ repo, dir }: { repo: string; dir: string }, opts: { taskUnfinished(id: string): Promise<boolean> }) => {
+    asked.push({ repo, dir, unfinished: await Promise.all(['T-run', 'T-stopped', 'T-done', 'T-gone'].map((id) => opts.taskUnfinished(id))) });
+    return { repo, dir, base: 'main', pull: { kind: 'up-to-date', branch: 'main' }, merged: [branch('local', 'a'), branch('origin', 'a')], kept: [] };
+  };
+  const deleted: { dir: string; ids: string[] }[] = [];
+  sync.deleteMerged = async (dir: string, branches: { id: string }[]) => (deleted.push({ dir, ids: branches.map((b) => b.id) }), branches.map((b, i) => ({ id: b.id, ok: i === 0, ...(i > 0 && { note: 'refused' }) })));
+  const states: Record<string, string> = { 'T-run': 'active', 'T-stopped': 'stopped', 'T-done': 'done' };
+  const engine = { svc: { state: async (id: string) => (states[id] ? { status: states[id] } : Promise.reject(new Error('no task'))) } };
+  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, {
+    orch: { engine, root: ws, config: async () => ({ ok: true, config: { repos: { api: { name: 'api', path: 'services/api' } } } }) },
+  });
+  try {
+    await assert.rejects(() => p.$syncRepos({ repos: ['api', 'web'] }), /web is not configured here/);
+    const run = await p.$syncRepos({ repos: ['api'] });
+    assert.deepEqual(asked, [{ repo: 'api', dir: path.join(ws, 'services', 'api'), unfinished: [true, true, false, false] }], 'a running or stopped task keeps its branch; a finished or deleted one does not');
+
+    // Only what this run found: an id the page made up is not deleted.
+    const out = await p.$syncDelete({ runId: run.runId, ids: ['api:local:a', 'api:origin:a', 'api:local:main'] });
+    assert.deepEqual(deleted, [{ dir: path.join(ws, 'services', 'api'), ids: ['api:local:a', 'api:origin:a'] }]);
+    assert.deepEqual(out.map((d) => d.ok), [true, false]);
+    assert.deepEqual(p.syncRun!.repos[0]!.merged.map((b) => b.id), ['api:origin:a'], 'what is gone is not offered again');
+    await assert.rejects(() => p.$syncDelete({ runId: 'another', ids: ['api:origin:a'] }), /no longer the last one/);
+  } finally {
+    Object.assign(sync, real);
+  }
+});
+
+test('panel: Resolve with Claude opens Claude Code in the repo whose merge stopped, with its conflicts as the first message', async () => {
+  const opened: Record<string, unknown>[] = [];
+  vscodeStub.window.createTerminal = (options: Record<string, unknown>) => (opened.push(options), { show() {} });
+  const p = Object.assign(Object.create(DashboardPanel.prototype) as InstanceType<typeof DashboardPanel>, {
+    orch: { claudeCommand: () => '/opt/bin/claude', accountChoice: () => ({ dir: '/home/me/.claude-work' }) },
+    syncRun: {
+      runId: 'r1',
+      repos: [
+        { repo: 'api', dir: '/ws/api', base: 'main', pull: { kind: 'conflict', branch: 'feat/x', base: 'main', files: ['app.js', 'lib/b.js'] }, merged: [], kept: [] },
+        { repo: 'web', dir: '/ws/web', base: 'main', pull: { kind: 'up-to-date', branch: 'main' }, merged: [], kept: [] },
+      ],
+    },
+  });
+  await p.$syncResolve({ runId: 'r1', repo: 'api' });
+  const [o] = opened;
+  assert.equal(o!.name, 'Merge · api');
+  assert.equal(o!.shellPath, '/opt/bin/claude', 'Claude itself, no shell');
+  assert.equal(o!.cwd, '/ws/api');
+  assert.equal((o!.env as { CLAUDE_CONFIG_DIR?: string }).CLAUDE_CONFIG_DIR, '/home/me/.claude-work');
+  assert.match((o!.shellArgs as string[])[0]!, /merging origin\/main into the branch feat\/x stopped on conflicts in:\n- app\.js\n- lib\/b\.js/);
+  await assert.rejects(() => p.$syncResolve({ runId: 'r1', repo: 'web' }), /web has no merge waiting on conflicts/);
+  await assert.rejects(() => p.$syncResolve({ runId: 'r0', repo: 'api' }), /no longer the last one/);
+  assert.equal(opened.length, 1);
+});

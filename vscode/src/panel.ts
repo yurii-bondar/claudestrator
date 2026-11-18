@@ -23,9 +23,10 @@ import { effectiveFor } from '../../core/src/defaults';
 import { AGENT_COLORS, OUTPUTS, EFFORTS, validateSetting } from '../../core/src/protocol';
 import { parsePageRequest, openable, SESSION_ID } from '../../core/src/requests';
 import { fixProblem, fixableCheckpoint, fixDirs, fixPrompt, fixArgs } from '../../core/src/fix';
+import { conflictPrompt, deleteMerged, syncRepo } from '../../core/src/sync';
 import { settings, type Orchestrator } from './orchestrator';
 import type { Engine } from '../../core/src/engine';
-import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, SkillScope, TaskScreen } from '../../core/src/wire';
+import type { BlockedRepo, ComposerArgs, ConfigData, HostMessage, ConfigSummary, HealthSummary, NewAgentParams, PipelineEdit, Preview, ReposData, Route, Rpc, RpcHandlers, SaveGroupParams, SaveInstructionParams, SaveScenarioParams, SettingsData, SetupParams, SkillScope, SyncRun, TaskScreen, Deleted } from '../../core/src/wire';
 import type { Agent, Effort, ScenarioStep, Gate, TaskState } from '../../core/src/types';
 import type { ConfigLayer, RepoLayer } from '../../core/src/config';
 
@@ -229,6 +230,8 @@ class DashboardPanel implements RpcHandlers {
   /** The route the panel was opened with, once: a reload of the page goes back to where you were, not to it. */
   /** The task the page shows, whose agent's output it gets. */
   viewing: string | null = null;
+  /** The last sync of repos, for the deletion that follows it. */
+  syncRun: SyncRun | null = null;
 
   async $view({ taskId }: { taskId: string | null }) {
     this.viewing = taskId;
@@ -588,6 +591,10 @@ class DashboardPanel implements RpcHandlers {
     terminal.show();
   }
 
+  async $claudeTerminal() {
+    await this.orch.openClaudeTerminal();
+  }
+
   async $openExternal({ url }: { url: string }) {
     if (!view.isWebLink(url)) throw new Error('not a web link');
     await vscode.env.openExternal(vscode.Uri.parse(url));
@@ -900,7 +907,59 @@ class DashboardPanel implements RpcHandlers {
       detected,
       context: r.ok ? await Promise.all(r.config.context.map(async (f) => ({ file: f, rel: path.relative(this.root, f), exists: await exists(f), ref: path.relative(ctxDir, f) }))) : [],
       baseBranch: r.ok ? r.config.baseBranch : 'main',
+      repoSets: r.ok ? r.config.repoSets : {},
     };
+  }
+
+  // ---------- sync ----------
+
+  /**
+   * Pulls origin's default branch into each named repo, side by side, and finds its merged branches. The run is kept
+   * for the deletion that follows: the page names what to delete by id, and only what this run found can go.
+   */
+  async $syncRepos({ repos }: { repos: string[] }): Promise<SyncRun> {
+    const r = await this.orch.config();
+    if (!r.ok) throw new Error(`The config has errors: ${r.errors.map((e) => e.message).join('; ')}`);
+    const unknown = repos.filter((name) => !r.config.repos[name]);
+    if (unknown.length) throw new Error(`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not configured here`);
+    const engine = this.engine;
+    const taskUnfinished = async (taskId: string): Promise<boolean> => {
+      const s = await engine.svc.state(taskId).catch(() => null);
+      return Boolean(s && s.status !== 'done');
+    };
+    const results = await Promise.all(repos.map((name) => syncRepo({ repo: name, dir: path.resolve(this.root, r.config.repos[name]!.path) }, { taskUnfinished })));
+    this.syncRun = { runId: crypto.randomUUID(), repos: results };
+    return this.syncRun;
+  }
+
+  /** The run the page answers: the last one, by its id. */
+  syncRunOf(runId: string): SyncRun {
+    if (!this.syncRun || this.syncRun.runId !== runId) throw new Error('This sync is no longer the last one: run it again');
+    return this.syncRun;
+  }
+
+  async $syncDelete({ runId, ids }: { runId: string; ids: string[] }): Promise<Deleted[]> {
+    const run = this.syncRunOf(runId);
+    const out: Deleted[] = [];
+    for (const repo of run.repos) {
+      const chosen = repo.merged.filter((b) => ids.includes(b.id));
+      if (chosen.length) out.push(...(await deleteMerged(repo.dir, chosen)));
+    }
+    // What is gone is not offered again.
+    const gone = new Set(out.filter((d) => d.ok).map((d) => d.id));
+    this.syncRun = { ...run, repos: run.repos.map((x) => ({ ...x, merged: x.merged.filter((b) => !gone.has(b.id)) })) };
+    return out;
+  }
+
+  async $syncResolve({ runId, repo }: { runId: string; repo: string }) {
+    const x = this.syncRunOf(runId).repos.find((y) => y.repo === repo);
+    if (!x || x.pull.kind !== 'conflict') throw new Error(`${repo} has no merge waiting on conflicts`);
+    const prompt = conflictPrompt({ repo, dir: x.dir, branch: x.pull.branch, base: x.pull.base, files: x.pull.files });
+    // Claude runs in the terminal itself, as for Fix in chat: the prompt is an argument, never shell text.
+    const [shellPath, shellArgs] = launch(this.orch.claudeCommand(), [prompt]);
+    vscode.window
+      .createTerminal({ name: `Merge · ${repo}`, shellPath, shellArgs, cwd: x.dir, env: { PATH: getChildEnv().PATH, CLAUDE_CONFIG_DIR: this.orch.accountChoice().dir || null }, iconPath: new vscode.ThemeIcon('git-merge') })
+      .show();
   }
 
   async $saveRepo({ name, oldName, layer }: { name?: string; oldName?: string; layer: RepoLayer }) {

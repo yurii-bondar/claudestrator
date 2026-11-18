@@ -163,6 +163,7 @@ function activate(context: vscode.ExtensionContext) {
     limitsItem,
     orch.onDidChange(() => void refresh()),
     reg('claudestrator.open', () => open(context, { name: 'home' })),
+    reg('claudestrator.claudeTerminal', () => orch.openClaudeTerminal()),
     reg('claudestrator.newTask', (text) => open(context, { name: 'home', compose: typeof text === 'string' ? text : '' })),
     reg('claudestrator.checkReadiness', (text) => open(context, { name: 'home', scenario: 'readiness', compose: typeof text === 'string' ? text : '' })),
     reg('claudestrator.audit', (text) => open(context, { name: 'home', scenario: 'audit', compose: typeof text === 'string' ? text : '' })),

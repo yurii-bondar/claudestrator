@@ -7,7 +7,9 @@ import { Engine } from '../../core/src/engine';
 import { exists } from '../../core/src/files';
 import { ClaudeRunner, sameWindows } from '../../core/src/runner';
 import { HookServer } from '../../core/src/hookserver';
-import { setChildEnv, getChildEnv } from '../../core/src/git';
+import { BridgeServer, engineOps } from '../../core/src/bridge';
+import { bridgeMcpConfig, terminalAgents, terminalArgs, terminalPrompt } from '../../core/src/terminal';
+import { setChildEnv, getChildEnv, launch } from '../../core/src/git';
 import { resolveDefaults } from '../../core/src/defaults';
 import * as mcp from '../../core/src/mcp';
 import { exec } from '../../core/src/git';
@@ -104,6 +106,8 @@ class Orchestrator {
   _onEngine: vscode.EventEmitter<EngineEvent>;
   onEngine: vscode.Event<EngineEvent>;
   mcp: McpState;
+  /** The MCP server a terminal session started from here reaches Claudestrator through; started with the first one. */
+  bridge: BridgeServer | null = null;
   mcpLogins: Map<string, McpLogin>;
   auth: Map<string, AuthInfo>;
   claudeLoginTerminal: vscode.Terminal | null;
@@ -267,6 +271,7 @@ class Orchestrator {
       flags: () => new Set((this.health && this.health.claude && this.health.claude.flags) || DEFAULT_FLAGS),
       settingSources: () => settings().get<string[]>('settingSources') || null,
       mcpConfig: () => mcp.writeUserMcpConfig(this.agentMcpFile(), this.agentEnv().CLAUDE_CONFIG_DIR),
+      mcpServers: () => this.mcpServerNames(),
       env: (): NodeJS.ProcessEnv => {
         const dir = this.accountChoice().dir;
         return dir ? { CLAUDE_CONFIG_DIR: dir } : {};
@@ -280,7 +285,7 @@ class Orchestrator {
       bitbucket: () => this.bitbucket(),
       mcpIntake: (tracker) => this.mcpIntakeServer(tracker),
       askPermissions: () => settings().get('askPermissions') === true,
-      secretFiles: () => [this.agentMcpFile()],
+      secretFiles: () => this.secretFiles(),
     });
     const engine = this.engine;
     for (const name of ['changed', 'output', 'live', 'log', 'checkpoint', 'finished', 'permission', 'permissionDone', 'limits']) {
@@ -597,6 +602,45 @@ class Orchestrator {
     return path.join(this.context.globalStorageUri.fsPath, 'agent-mcp.json');
   }
 
+  /** Files no agent reads: the account's MCP servers carry tokens, and an agent with the bridge's could start tasks of its own. */
+  secretFiles(): string[] {
+    return [this.agentMcpFile(), this.terminalMcpFile()];
+  }
+
+  /** The terminal session's MCP config: the bridge's address and token. */
+  terminalMcpFile(): string {
+    return path.join(this.context.globalStorageUri.fsPath, 'terminal-mcp.json');
+  }
+
+  /**
+   * Claude Code in a terminal, with Claudestrator in context: told of the workspace's repos, agents, scenarios and
+   * tasks, with its agents as subagents, and the bridge to start and follow tasks. In the workspace folder, under the
+   * agents' account.
+   */
+  async openClaudeTerminal(): Promise<void> {
+    const root = this.root;
+    if (!root || !this.engine) throw new Error('Open a workspace folder first');
+    await this.ensureReady();
+    const r = await this.config();
+    if (!r.ok) throw new Error(`The config has errors: ${r.errors.map((e) => e.message).join('; ')}`);
+    const ops = engineOps(() => this.engine);
+    this.bridge = this.bridge || new BridgeServer(ops);
+    const file = this.terminalMcpFile();
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, JSON.stringify(bridgeMcpConfig(await this.bridge.listen())), { mode: 0o600 });
+    await fs.promises.chmod(file, 0o600);
+    const configFile = projectConfigFile(root);
+    const prompt = terminalPrompt({ workspace: root, config: r.config, configFile: (await exists(configFile)) ? configFile : null, tasks: await ops.tasks().catch(() => []) });
+    const agents = terminalAgents(r.config, await this.mcpServerNames());
+    const inside = (dir: string): boolean => !path.relative(root, dir).startsWith('..') && !path.isAbsolute(path.relative(root, dir));
+    const addDirs = Object.values(r.config.repos).map((x) => path.resolve(root, x.path)).filter((dir) => !inside(dir));
+    // Claude itself runs in the terminal, as for Fix in chat: the prompt is an argument, never shell text.
+    const [shellPath, shellArgs] = launch(this.claudeCommand(), terminalArgs({ prompt, agents, mcpConfig: file, addDirs }));
+    vscode.window
+      .createTerminal({ name: 'Claude · Claudestrator', shellPath, shellArgs, cwd: root, env: { PATH: getChildEnv().PATH, CLAUDE_CONFIG_DIR: this.accountChoice().dir || null }, iconPath: new vscode.ThemeIcon('sparkle') })
+      .show();
+  }
+
   agentEnv(): NodeJS.ProcessEnv {
     const dir = this.accountChoice().dir;
     const env = { ...getChildEnv() };
@@ -637,6 +681,12 @@ class Orchestrator {
       this.mcp = { servers, checking: false, checkedAt: new Date().toISOString(), error: (e as Error).message };
     }
     this.fire();
+  }
+
+  /** Every MCP server Claude Code may load for the account: the ones the last check listed, and the ones its config files name. */
+  async mcpServerNames(): Promise<string[]> {
+    const configured = this.root ? await mcp.configuredMcpServers(this.root, this.agentEnv().CLAUDE_CONFIG_DIR).catch(() => []) : [];
+    return [...new Set([...this.mcp.servers, ...configured].map((x) => x.name))];
   }
 
   /**
@@ -808,6 +858,7 @@ class Orchestrator {
 
   dispose(): void {
     this.keepAwake.dispose();
+    if (this.bridge) this.bridge.dispose();
     if (this.configSub) this.configSub.dispose();
     this.disposeWatchers();
     this.hooks.dispose();

@@ -1,6 +1,8 @@
 // A plan's question only the user can answer: the plan waits for the answer, approved by hand or not.
 import test from 'node:test';
 import * as assert from 'node:assert/strict';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { transition } from '../src/machine';
 import { buildPipeline } from '../src/pipeline';
@@ -89,6 +91,57 @@ test('engine: a task on auto stops at a plan whose question only you can answer,
       return !h.engine.isRunning(taskId) && st.checkpoint ? st : null;
     }, 60000);
     assert.equal(s.checkpoint!.id, 'confirm-push', JSON.stringify(h.engine.lastError(taskId)));
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test("plan: a question's other answers and the task its default leaves out are kept; one repeating the default is not offered twice", () => {
+  const r = parsePlanMeta({
+    type: 'feat',
+    slug: 'x',
+    repos: [{ name: 'api' }],
+    openQuestions: [
+      { question: 'Exact match or a /24 network?', default: 'exact match', options: [' a /24 network ', 'exact match', 'a /24 network'], followUp: ' Back-office setting per operator ' },
+      { question: 'Open?', default: 'yes', options: [], followUp: '  ' },
+    ],
+  });
+  assert.ok(r.ok);
+  assert.deepEqual(r.value.openQuestions, [
+    { question: 'Exact match or a /24 network?', default: 'exact match', options: ['a /24 network'], followUp: 'Back-office setting per operator' },
+    { question: 'Open?', default: 'yes' },
+  ]);
+  assert.ok(!parsePlanMeta({ type: 'feat', slug: 'x', repos: [{ name: 'api' }], openQuestions: [{ question: 'q', default: 'd', options: 'one' }] }).ok, 'options are a list');
+});
+
+test('plan: the planner is told to list the other answers and the task a default leaves out', () => {
+  const r = config.resolveConfig([config.builtinLayer()]);
+  assert.ok(r.ok);
+  const planner = r.config.agents.planner!.instructions;
+  assert.match(planner, /list the others as "options"/);
+  assert.match(planner, /"followUp"/);
+  assert.match(planner, /"openQuestions": \[\{"question": "\.\.\.", "default": "\.\.\.", "options": \[/);
+});
+
+test("plan: a plan's questions reach the screen with their other answers, and the answers picked there reach the planner", async () => {
+  const ws = workspace(['api'], 'repos:\n  api: {}\n');
+  const questions = [{ question: 'Exact match or a /24 network?', default: 'exact match', options: ['a /24 network'], followUp: 'A back-office setting per operator' }];
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_PLAN_QUESTIONS: JSON.stringify(questions) });
+  try {
+    const { taskId } = await h.engine.start({ text: 'Bind the session to the player IP' });
+    let s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint!.id, 'approve-plan', JSON.stringify(h.engine.lastError(taskId)));
+    assert.deepEqual(s.plan!.openQuestions, questions);
+    const answers = 'My answers to the open questions of the plan:\n1. Exact match or a /24 network?\n   → a /24 network (my pick)';
+    await h.engine.answer(taskId, 'approve-plan', 'change', { feedback: answers });
+    s = await waitFor(async () => {
+      const st = await h.engine.svc.state(taskId);
+      return !h.engine.isRunning(taskId) && st.checkpoint ? st : null;
+    }, 60000);
+    assert.equal(s.checkpoint!.id, 'approve-plan', 'the revised plan, to approve');
+    assert.deepEqual(s.plan!.openQuestions, [], 'answered');
+    const prompt = fs.readFileSync(path.join(h.state, 'prompt-planner.txt'), 'utf8');
+    assert.ok(prompt.includes(`Feedback from the user, verbatim:`) && prompt.includes(answers), 'the planner read the answers as they were picked');
   } finally {
     h.hooks.dispose();
   }

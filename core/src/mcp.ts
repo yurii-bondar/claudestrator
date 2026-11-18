@@ -6,6 +6,7 @@ import * as path from 'path';
 import { exists } from './files';
 import { exec } from './git';
 import { readJsonFresh } from './env';
+import type { Agent } from './types';
 import type { McpServer, McpSummary } from './wire';
 
 /** `~/.claude.json` as far as this module reads it. */
@@ -142,6 +143,24 @@ function redactMcpDetails(text: string): string {
     .join('\n');
 }
 
+/**
+ * How Claude Code names a server's tools: `mcp__<server>__<tool>`, with every character of the server's name that is
+ * not a letter, a digit, `_` or `-` as `_` ("claude.ai Slack" → `mcp__claude_ai_Slack`).
+ */
+const mcpToolPrefix = (server: string): string => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
+/** Whether an agent may use this MCP server: none with `mcp: false`, and only the ones its `mcpServers` names. */
+function mcpServerAllowed(agent: Pick<Agent, 'mcp' | 'mcpServers'>, server: string): boolean {
+  if (agent.mcp === false) return false;
+  return !agent.mcpServers || agent.mcpServers.some((x) => mcpToolPrefix(x) === mcpToolPrefix(server));
+}
+
+/** Whether a tool `mcp__<server>__<tool>` is of a server the agent may use. */
+function mcpToolAllowed(agent: Pick<Agent, 'mcp' | 'mcpServers'>, tool: string): boolean {
+  if (agent.mcp === false) return false;
+  return !agent.mcpServers || agent.mcpServers.some((x) => tool.startsWith(`${mcpToolPrefix(x)}__`));
+}
+
 /** Names come from config files; only a sane name goes on a command line (as its own argv entry, never a shell). */
 const isMcpName = (name: string): boolean => /^[A-Za-z0-9 _.:@-]{1,100}$/.test(name);
 
@@ -192,4 +211,4 @@ function summarizeMcp({ servers, hidden, checking }: { servers: readonly McpServ
 const mcpConfigs = new Map<string, { sig: string; result: string | null }>();
 
 export type { McpServer };
-export { writeUserMcpConfig, configuredMcpServers, parseMcpList, mergeMcp, checkMcpServers, redactMcpDetails, isMcpName, canLogin, summarizeMcp };
+export { mcpToolPrefix, mcpServerAllowed, mcpToolAllowed, writeUserMcpConfig, configuredMcpServers, parseMcpList, mergeMcp, checkMcpServers, redactMcpDetails, isMcpName, canLogin, summarizeMcp };

@@ -36,8 +36,8 @@ function valid(schema: Schema, v: unknown): boolean {
 
 const SAMPLES: Record<string, { good: unknown; bad: unknown[] }> = {
   plan: {
-    good: { type: 'feat', slug: 'cap-max-bet', title: 'Cap the max bet', repos: [{ name: 'api', baseBranch: 'release/2.x' }, { name: 'web', mode: 'tests_only' }], openQuestions: [{ question: 'Per operator?', default: 'yes' }] },
-    bad: [{ type: 'feat', slug: 'Cap Bet', repos: [{ name: 'api' }] }, { type: 'feature', slug: 'x', repos: [{ name: 'api' }] }, { type: 'fix', slug: 'x', repos: [] }, { type: 'fix', slug: 'x', repos: [{ name: 'api', baseBranch: '-rf' }] }],
+    good: { type: 'feat', slug: 'cap-max-bet', title: 'Cap the max bet', repos: [{ name: 'api', baseBranch: 'release/2.x' }, { name: 'web', mode: 'tests_only' }], openQuestions: [{ question: 'Per operator?', default: 'yes' }, { question: 'Exact or /24?', default: 'exact', options: ['/24'], followUp: 'Back-office setting' }] },
+    bad: [{ type: 'feat', slug: 'Cap Bet', repos: [{ name: 'api' }] }, { type: 'feat', slug: 'x', repos: [{ name: 'api' }], openQuestions: [{ question: 'q', default: 'd', options: [''] }] }, { type: 'feature', slug: 'x', repos: [{ name: 'api' }] }, { type: 'fix', slug: 'x', repos: [] }, { type: 'fix', slug: 'x', repos: [{ name: 'api', baseBranch: '-rf' }] }],
   },
   verdict: {
     good: { status: 'changes_requested', summary: 'one gap', findings: [{ severity: 'major', repo: 'api', file: 'a.ts', line: 3, problem: 'no test' }] },

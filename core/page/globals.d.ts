@@ -63,6 +63,11 @@ type FeedEvent = import('../src/wire').FeedEvent;
 type PipelineEdit = import('../src/wire').PipelineEdit;
 type CheckpointContext = import('../src/wire').CheckpointContext;
 type ReviewItemView = import('../src/wire').ReviewItemView;
+type PlanQuestion = import('../src/types').PlanQuestion;
+type SyncRun = import('../src/wire').SyncRun;
+type RepoSync = import('../src/wire').RepoSync;
+type MergedBranch = import('../src/wire').MergedBranch;
+type Deleted = import('../src/wire').Deleted;
 
 // ---------- requests ----------
 
@@ -79,7 +84,7 @@ type Attempted<R> = (R extends void ? true : R) | undefined;
 type DataKey =
   | 'name' | 'id' | 'repo' | 'path' | 'i' | 'j' | 'field' | 'file' | 'preview' | 'tab' | 'url' | 'pipe' | 'tool' | 'since'
   | 'sev' | 'scenario' | 'level' | 'kind' | 'dir' | 'allow' | 'text' | 'seq' | 'runs' | 'option' | 'cmd' | 'key' | 'action'
-  | 'change' | 'input' | 'href';
+  | 'change' | 'input' | 'href' | 'q';
 interface WithData {
   readonly dataset: Readonly<Record<DataKey, string>>;
 }
@@ -131,12 +136,18 @@ interface UiState {
   showAllDone?: boolean;
   /** The Tasks page lists the finished tasks too (they are always in the rail's tree). */
   showFinished?: boolean;
-  /** The rail lists the tasks under the Tasks item (false: folded). */
+  /** The rail lists the tasks under the Tasks item (else they are folded, as they are until you open them). */
   tasksOpen?: boolean;
   /** Sections of the rail's tree opened or folded by hand, by key; the rest are open while they hold unfinished tasks. */
   treeOpen?: Record<string, boolean>;
   /** Sections whose finished tasks are listed, not folded into one row. */
   treeDone?: Record<string, boolean>;
+  /** The cards of the Integrations page opened by hand, by key (atlassian, bitbucket); the rest are folded. */
+  integrationsOpen?: Record<string, boolean>;
+  /** The repos Sync picked last. */
+  syncRepos?: string[];
+  /** The merged branches of the last sync unticked, by id. */
+  syncSkip?: string[];
   /** The Integrations page lists the MCP servers you hid. */
   mcpHiddenOpen?: boolean;
   /** What the rail's tree is filtered by. */

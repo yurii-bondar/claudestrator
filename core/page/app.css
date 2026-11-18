@@ -219,7 +219,9 @@ p { margin: 0 0 8px; }
 }
 .rail-head { display: flex; align-items: center; gap: var(--cs-space-2); padding: var(--cs-space-1) var(--cs-space-1) var(--cs-space-2); }
 .rail-head .rail-close { display: none; margin-left: auto; }
-.rail-new { width: 100%; margin-bottom: var(--cs-space-2); }
+.rail-new-row { display: flex; gap: var(--cs-space-2); margin-bottom: var(--cs-space-2); }
+.rail-new { flex: 1; min-width: 0; }
+.rail-terminal { flex: none; padding-left: var(--cs-space-3); padding-right: var(--cs-space-3); }
 .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--cs-space-3); padding: var(--cs-space-3); background: var(--cs-bg-raised); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-lg); }
 .rail-foot:empty { display: none; }
 .rail-health { display: flex; align-items: center; gap: var(--cs-space-2); font-size: var(--cs-font-sm); color: var(--cs-text-secondary); }
@@ -597,6 +599,19 @@ body.vscode-high-contrast .tc-marker { background: transparent; box-shadow: inse
 .questions h4 { color: var(--cs-status-run-text); text-transform: none; letter-spacing: 0; font-size: var(--cs-font-sm); }
 .q { padding: 4px 0; border-top: 1px solid var(--cs-border-default); }
 .q:first-of-type { border-top: 0; }
+/* An open question of the plan, answered here: the planner's answer picked, its other answers, or yours. */
+.q { display: flex; flex-direction: column; gap: 6px; padding: var(--cs-space-2) 0; }
+.q > .chip { align-self: flex-start; }
+.q-lead { margin: 2px 0 var(--cs-space-1); }
+.q-text { font-weight: var(--cs-weight-strong); }
+.q-choices { display: flex; flex-direction: column; gap: 2px; }
+.q-choice { display: flex; align-items: center; gap: var(--cs-space-2); padding: 3px var(--cs-space-2); border-radius: var(--cs-radius-sm); cursor: pointer; }
+.q-choice:hover { background: var(--cs-bg-hover); }
+.q-choice.on { background: var(--cs-bg-selected); }
+.q-choice input[type="radio"] { flex: none; margin: 0; }
+.q-label { min-width: 0; }
+.q-own { flex: 1; min-width: 160px; }
+.q-follow { display: flex; align-items: center; gap: var(--cs-space-2); flex-wrap: wrap; }
 .doc-frame { max-height: 62vh; overflow: auto; border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-md); padding: 6px 18px; background: var(--cs-bg-app); }
 .push-table { display: flex; flex-direction: column; gap: 6px; }
 .push-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-radius: var(--cs-radius-md); background: var(--cs-bg-app); border: 1px solid var(--cs-border-default); }
@@ -1033,7 +1048,37 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .mcp-state.s-installed { color: var(--cs-status-warn-text); }
 .mcp-state.s-failed, .mcp-state.s-needs_auth { color: var(--cs-status-err-text); }
 .mcp-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+/* Repos & checks → Sync: the repos to pick, the sets kept, and what each repo's sync came to. */
+.sync-sets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cs-space-2); margin-bottom: var(--cs-space-3); }
+.sync-set { display: inline-flex; align-items: center; }
+.sync-set.on .chip { border-color: var(--cs-border-focus); color: var(--cs-text-primary); }
+.sync-repos { display: flex; flex-wrap: wrap; gap: var(--cs-space-2) var(--cs-space-5); }
+.sync-repo, .sync-branch { display: inline-flex; align-items: center; gap: var(--cs-space-2); }
+.sync-actions { margin-top: var(--cs-space-3); flex-wrap: wrap; }
+.sync-set-name { width: 200px; }
+.sync-result { margin-bottom: var(--cs-space-3); }
+.sync-repo-name, .sync-warn { display: inline-flex; align-items: center; gap: 6px; }
+.sync-warn { display: flex; align-items: flex-start; margin-top: var(--cs-space-1); }
+.sync-pull { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cs-font-sm); }
+.sync-pull.tone-ok { color: var(--cs-status-ok-text); }
+.sync-pull.tone-warn { color: var(--cs-status-warn-text); }
+.sync-pull.tone-error { color: var(--cs-status-err-text); }
+.sync-branches { display: flex; flex-direction: column; gap: 4px; margin-top: var(--cs-space-2); }
+.sync-branch.gone { color: var(--cs-text-secondary); }
+.sync-branch.gone code { text-decoration: line-through; }
+.sync-branch.failed { color: var(--cs-status-err-text); }
+.sync-kept { margin-top: var(--cs-space-2); }
+.sync-foot { position: sticky; bottom: 0; padding: var(--cs-space-3) 0; background: var(--cs-bg-app); gap: var(--cs-space-3); flex-wrap: wrap; }
+/* Integrations: the agents that use a server, ticked in its menu. */
+.mcp-agents-menu { width: 300px; max-width: calc(100vw - 40px); }
+.mcp-agents-menu .menu-title { font-size: var(--cs-font-xs); color: var(--cs-text-secondary); padding: 4px 10px 6px; }
 /* The servers you hid: folded under one row, dimmed when listed. */
+/* Integrations: a card folded to its name and status until you open it; its name is the button. */
+.integ-card h3 { margin-bottom: 0; }
+.integ-card h3:has([aria-expanded="true"]) { margin-bottom: 12px; }
+.integ-fold { display: flex; align-items: center; gap: var(--cs-space-2); width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.integ-fold .chev { width: 14px; height: 14px; transition: transform var(--cs-duration); }
+.integ-fold[aria-expanded="true"] .chev { transform: rotate(90deg); }
 .mcp-hidden-fold { display: flex; align-items: center; gap: var(--cs-space-2); width: 100%; margin-top: var(--cs-space-4); padding: var(--cs-space-2) 0; border: 0; background: transparent; color: var(--cs-text-primary); font: inherit; font-weight: var(--cs-weight-strong); text-align: left; cursor: pointer; }
 .mcp-hidden-fold .muted { font-weight: var(--cs-weight-regular); }
 .mcp-hidden-fold .chev { width: 14px; height: 14px; transition: transform var(--cs-duration); }
@@ -1090,6 +1135,15 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .sc-item.current .sc-pick > .ic { color: var(--cs-border-focus); }
 .sc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sc-text b { display: flex; align-items: center; gap: 6px; }
+/* The composer's scenarios: a name each; what one does shows on its ⓘ, below it. */
+.sc-menu.sc-names { width: 280px; }
+.sc-names .sc-pick { align-items: center; }
+.sc-names .sc-pick > .ic { margin-top: 0; }
+.sc-info { position: relative; display: inline-flex; align-items: center; padding: 0 var(--cs-space-2); border-radius: var(--cs-radius-sm); color: var(--cs-text-secondary); cursor: help; }
+.sc-info:hover, .sc-info:focus-visible { color: var(--cs-text-primary); }
+.sc-info:focus-visible { outline: 1px solid var(--cs-border-focus); }
+.sc-tip { display: none; position: absolute; top: calc(100% + 2px); right: 0; z-index: var(--cs-z-menu); width: 260px; max-width: calc(100vw - 40px); padding: var(--cs-space-2) var(--cs-space-3); background: var(--cs-menu-bg); color: var(--cs-text-primary); border: 1px solid var(--cs-border-strong); border-radius: var(--cs-radius-md); box-shadow: var(--cs-shadow); font-size: var(--cs-font-sm); font-weight: var(--cs-weight-regular); line-height: 1.45; white-space: normal; cursor: auto; }
+.sc-info:hover .sc-tip, .sc-info:focus .sc-tip { display: block; }
 .sc-editor { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--cs-radius-lg); border: 1px dashed var(--cs-border-strong); background: var(--cs-bg-app); }
 .pipe-chip.off { color: var(--cs-text-secondary); border-style: dashed; }
 .sc-opt { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: var(--cs-radius-lg); padding: 3px 11px; background: transparent; color: var(--cs-text-secondary); font: inherit; font-size: var(--cs-font-sm); cursor: pointer; white-space: nowrap; }

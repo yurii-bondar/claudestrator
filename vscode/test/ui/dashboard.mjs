@@ -6,7 +6,7 @@
 import test, { after, before } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -163,6 +163,194 @@ test('composer: a pull request link picks PR review, says what it will do, and w
   assert.match(bb, /Bitbucket is not connected: add its API token/);
 });
 
+test("composer: the scenarios menu lists each by its name; what one does shows only on its ⓘ", async () => {
+  await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.sc-select .sc-current')`, 'the scenario picker');
+  assert.equal(await b.eval(`getComputedStyle(document.querySelector('.sc-select .menu')).display`), 'none', 'closed until its button opens it');
+  await b.eval(`document.querySelector('.sc-select').classList.add('open'); true`);
+  const deliver = `document.querySelector('.sc-names .sc-item:has([data-id="deliver"])')`;
+  assert.equal(await b.eval(`${deliver}.querySelector('.sc-pick').innerText.trim()`), 'Deliver', 'the name alone');
+  const tip = `${deliver}.querySelector('.sc-tip')`;
+  assert.match(await b.eval(`${tip}.textContent`), /Plan → your approval/);
+  const hover = async (sel) => {
+    const at = await b.eval(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    await b.sleep(100);
+  };
+  await hover(`${deliver}.querySelector('.sc-pick')`);
+  assert.equal(await b.eval(`getComputedStyle(${tip}).display`), 'none', 'not on the name');
+  await hover(`${deliver}.querySelector('.sc-info')`);
+  assert.equal(await b.eval(`getComputedStyle(${tip}).display`), 'block', 'on its ⓘ');
+  await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+  await b.eval(`document.querySelector('.sc-select').classList.remove('open'); true`);
+});
+
+test('sync: picked repos pull their default branch, a set of them is kept, and the merged branches go once confirmed', async () => {
+  // A repo of its own, with an origin on disk: main, and a branch already merged into it there.
+  const g = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
+  const origin = path.join(ws, '..', `svc-origin-${process.pid}.git`);
+  const svc = path.join(ws, 'svc');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
+  execFileSync('git', ['clone', '-q', origin, svc]);
+  g(svc, 'checkout', '-q', '-b', 'main');
+  writeFileSync(path.join(svc, 'a.txt'), 'a\n');
+  g(svc, 'add', 'a.txt');
+  g(svc, 'commit', '-q', '-m', 'a');
+  g(svc, 'checkout', '-q', '-b', 'feat/done');
+  writeFileSync(path.join(svc, 'b.txt'), 'b\n');
+  g(svc, 'add', 'b.txt');
+  g(svc, 'commit', '-q', '-m', 'b');
+  g(svc, 'checkout', '-q', 'main');
+  g(svc, 'merge', '-q', '--no-ff', '-m', 'Merge feat/done', 'feat/done');
+  g(svc, 'push', '-q', '-u', 'origin', 'main', 'feat/done');
+  g(svc, 'remote', 'set-head', 'origin', 'main');
+  await b.eval(`(async () => { await window.CS.call('saveRepo', { name: 'svc', layer: { path: 'svc' } }); window.CS.S.ui.syncRepos = ['svc']; await window.CS.go({ name: 'sync' }); return true; })()`);
+  try {
+    await until(`!!document.querySelector('[data-change="sync-pick"][data-name="svc"]')`, 'the repos to pick');
+    const ticked = () => b.eval(`[...document.querySelectorAll('[data-change="sync-pick"]')].filter((c) => c.checked).map((c) => c.dataset.name)`);
+    assert.deepEqual(await ticked(), ['svc'], 'the repos picked last');
+    assert.match(await textOf(`document.querySelector('.nav-item.active')`), /Repos & checks/, 'under Repos & checks');
+
+    // A set: saved under a name, and picked again with one click.
+    await b.eval(`document.querySelector('#sync-set-name').value = 'Services'; document.querySelector('[data-action="sync-set-save"]').click(); true`);
+    await until(`!!document.querySelector('[data-action="sync-set"][data-name="Services"]')`, 'the set');
+    assert.deepEqual((await b.eval(`window.CS.call('repos')`)).repoSets, { Services: ['svc'] });
+    await b.eval(`document.querySelector('[data-action="sync-none"]').click(); true`);
+    assert.deepEqual(await ticked(), []);
+    await b.eval(`document.querySelector('[data-action="sync-set"][data-name="Services"]').click(); true`);
+    assert.deepEqual(await ticked(), ['svc']);
+
+    await b.eval(`document.querySelector('[data-action="sync-run"]').click(); true`);
+    await until(`!!document.querySelector('.sync-result')`, 'the result');
+    assert.match(await textOf(`document.querySelector('.sync-result')`), /main is up to date/);
+    const offered = () => b.eval(`[...document.querySelectorAll('.sync-del')].map((c) => c.dataset.id + (c.checked ? '' : ' (unticked)'))`);
+    assert.deepEqual(await offered(), ['svc:local:feat/done', 'svc:origin:feat/done']);
+
+    // An untick stays when the page is drawn again; deleting asks once more first.
+    await b.eval(`(() => { const c = document.querySelector('.sync-del[data-id="svc:origin:feat/done"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    await b.eval(`window.CS.views.sync.render(); true`);
+    assert.deepEqual(await offered(), ['svc:local:feat/done', 'svc:origin:feat/done (unticked)']);
+    await b.eval(`document.querySelector('[data-action="sync-confirm"]').click(); true`);
+    assert.equal(g(svc, 'branch', '--list', 'feat/done'), 'feat/done', 'nothing deleted before the second press');
+    await b.eval(`document.querySelector('[data-action="sync-delete"]').click(); true`);
+    await until(`!!document.querySelector('.sync-branch.gone')`, 'the branch deleted');
+    assert.equal(g(svc, 'branch', '--list', 'feat/done'), '', 'the local branch is gone');
+    assert.match(g(svc, 'ls-remote', '--heads', 'origin', 'feat/done'), /feat\/done/, 'the unticked one on origin stays');
+  } finally {
+    await b.eval(`(async () => { await window.CS.call('setValue', { keyPath: ['repoSets', 'Services'], value: null }); await window.CS.call('removeRepo', { name: 'svc' }); window.CS.S.ui.syncRepos = undefined; window.CS.S.ui.syncSkip = undefined; return true; })()`);
+  }
+});
+
+test("agents: an agent's MCP servers are named in its card, a name with a space whole; none unticks it to every server", async () => {
+  const mcp = async (name) => (await b.eval(`window.CS.call('config')`)).agents.find((a) => a.name === name);
+  await b.eval(`(async () => { await window.CS.go({ name: 'agents' }); return true; })()`);
+  await until(`!!document.querySelector('[data-action="agent-toggle-open"][data-name="planner"]')`, 'the agents');
+  await b.eval(`document.querySelector('[data-action="agent-toggle-open"][data-name="planner"]').click(); true`);
+  const field = `document.querySelector('[data-field="mcpServers"][data-name="planner"]')`;
+  await until(`!!${field}`, "the planner's servers");
+  const set = (value) => b.eval(`(() => { const f = ${field}; f.value = ${JSON.stringify(value)}; f.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  try {
+    await set(' claude.ai Slack ,Grafana,, ');
+    await until(`(async () => true)()`, 'saved');
+    for (let i = 0; i < 50 && !(await mcp('planner')).mcpServers; i++) await b.sleep(100);
+    assert.deepEqual((await mcp('planner')).mcpServers, ['claude.ai Slack', 'Grafana'], 'split at commas only');
+    await until(`${field} && ${field}.value === 'claude.ai Slack, Grafana'`, 'the field as saved');
+    await set('');
+    for (let i = 0; i < 50 && (await mcp('planner')).mcpServers; i++) await b.sleep(100);
+    assert.equal((await mcp('planner')).mcpServers, undefined, 'empty: every server');
+
+    await b.eval(`document.querySelector('[data-action="agent-toggle-open"][data-name="developer"]').click(); true`);
+    await until(`!!document.querySelector('[data-change="agent-mcp"][data-name="developer"]')`, "the developer's card");
+    assert.equal(await b.eval(`!!document.querySelector('[data-field="mcpServers"][data-name="developer"]')`), false, 'an agent without MCP servers has no list to name');
+  } finally {
+    await b.eval(`window.CS.call('updateAgent', { name: 'planner', patch: { mcpServers: null } })`);
+  }
+});
+
+test('rail: the terminal button opens Claude Code with Claudestrator, and says so', async () => {
+  await b.eval(`(async () => { await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.rail-terminal')`, 'the terminal button');
+  assert.match(await b.eval(`document.querySelector('.rail-terminal').title`), /Claude Code in a terminal, with Claudestrator in context/);
+  await b.eval(`document.querySelector('.rail-terminal').click(); true`);
+  await until(`[...document.querySelectorAll('.toast')].some((t) => /Claude Code opened in a terminal, with Claudestrator in context/.test(t.textContent))`, 'the toast');
+});
+
+test("plan approval: the plan's questions are answered with the mouse and the keyboard, and the answers go to the planner", async () => {
+  const QUESTIONS = [
+    { question: 'Exact match or a /24 network?', default: 'exact match', options: ['a /24 network', 'a /16 network'], followUp: 'A back-office setting per operator' },
+    { question: 'Log the mismatch?', default: 'yes, as a metric' },
+  ];
+  /** Clicks the middle of what `sel` finds, with the mouse, as a person would. */
+  const mouse = async (sel) => {
+    const at = await b.eval(`(() => { const el = ${sel}; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    await b.sleep(100);
+  };
+  const taskId = await b.eval(`(async () => (await window.CS.call('start', { text: 'Bind the session to the player IP' })).taskId)()`);
+  const waitingAt = async (id) => {
+    for (let i = 0; i < 200; i++) {
+      const d = await b.eval(`window.CS.call('task', { taskId: ${JSON.stringify(taskId)} })`);
+      if (d.checkpointFull && d.checkpointFull.id === id && d.status.key !== 'running') return d;
+      await b.sleep(100);
+    }
+    throw new Error(`timed out waiting for ${id}`);
+  };
+  await waitingAt('approve-plan');
+  // The fake planner asks nothing: the screen is told of these questions, as a planner would ask them.
+  await b.eval(`(() => {
+    window.__questions = (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && d.taskId === ${JSON.stringify(taskId)} && d.plan && !d.answers.length) d.plan.openQuestions = ${JSON.stringify(QUESTIONS)}; };
+    window.addEventListener('message', window.__questions, true);
+    return true;
+  })()`);
+  const checkpoint = `document.querySelector('[data-region="task-checkpoint"]')`;
+  const checked = (q) => b.eval(`(document.querySelector('[name="q-${q}"]:checked') || {}).value`);
+  const buttons = () => b.eval(`[...${checkpoint}.querySelectorAll('[data-action="answer"]')].map((x) => x.dataset.option + (x.classList.contains('primary') ? '*' : ''))`);
+  try {
+    await b.eval(`window.CS.go({ name: 'task', taskId: ${JSON.stringify(taskId)} }); true`);
+    await until(`!!document.querySelector('.q-choice')`, 'the questions');
+    assert.equal(await checked(0), 'default', "the planner's answer, picked");
+    assert.equal(await checked(1), 'default');
+    assert.ok((await buttons()).includes('approve*'), 'approving goes with them');
+
+    await mouse(`[...document.querySelectorAll('[name="q-0"]')].find((r) => r.value === 'o1').closest('label')`);
+    assert.equal(await checked(0), 'o1', 'a click on the answer picks it');
+    assert.deepEqual((await buttons()).filter((o) => o.startsWith('approve')), [], 'not approved past it');
+    assert.ok((await buttons()).includes('change*'));
+    assert.match(await textOf(`${checkpoint}.querySelector('[data-option="change"]')`), /Revise the plan with your answers/);
+
+    // Typing an answer of your own picks it, and the field keeps what is typed while the question is drawn again.
+    await mouse(`document.querySelector('#q-own-1')`);
+    await b.send('Input.insertText', { text: 'тільки рядок у лог' });
+    await b.sleep(100);
+    assert.equal(await checked(1), 'own');
+    assert.equal(await b.eval(`document.querySelector('#q-own-1').value`), 'тільки рядок у лог');
+    assert.equal(await b.eval(`document.activeElement && document.activeElement.id`), 'q-own-1', 'still typing there');
+
+    await mouse(`${checkpoint}.querySelector('[data-action="answer"][data-option="change"]')`);
+    const d = await waitingAt('approve-plan');
+    const answer = d.answers[d.answers.length - 1];
+    assert.equal(answer.option, 'change');
+    assert.equal(answer.feedback, 'My answers to the open questions of the plan:\n1. Exact match or a /24 network?\n   → a /16 network (my pick)\n2. Log the mismatch?\n   → тільки рядок у лог (in my words)');
+  } finally {
+    await b.eval(`(() => { window.removeEventListener('message', window.__questions, true); return true; })()`);
+  }
+
+  // A plan asked again: New task starts the work an answer leaves out, from where it came.
+  await b.eval(`(() => { window.__questions = (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && d.taskId === ${JSON.stringify(taskId)} && d.plan) d.plan.openQuestions = ${JSON.stringify(QUESTIONS)}; }; window.addEventListener('message', window.__questions, true); return true; })()`);
+  try {
+    await b.eval(`(async () => { await window.CS.go({ name: 'home' }); await window.CS.go({ name: 'task', taskId: ${JSON.stringify(taskId)} }); return true; })()`);
+    await until(`!!document.querySelector('[data-action="q-new-task"]')`, 'New task');
+    assert.equal(await checked(0), 'default', 'a new plan asks anew');
+    await mouse(`document.querySelector('[data-action="q-new-task"][data-q="0"]')`);
+    await until(`!!document.querySelector('#composer-text') && document.querySelector('#composer-text').value.length > 0`, 'the composer, filled');
+    assert.match(await b.eval(`document.querySelector('#composer-text').value`), /^A back-office setting per operator\n\nLeft out of .+ by its plan\.\nThe question there: Exact match or a \/24 network\?\nIts answer: exact match$/);
+  } finally {
+    await b.eval(`(async () => { window.removeEventListener('message', window.__questions, true); window.CS.S.draft.text = ''; await window.CS.call('stop', { taskId: ${JSON.stringify(taskId)} }); await window.CS.call('deleteTask', { taskId: ${JSON.stringify(taskId)} }).catch(() => {}); return true; })()`);
+  }
+});
+
 test("tools: GitLab's CLI shows once installed; with it ready, a missing gh is not a problem", async () => {
   // The Tasks page shows the whole line only when something is wrong: Claude Code here.
   const health = `document.querySelector('[data-region="health"]')`;
@@ -200,9 +388,12 @@ test('setup: the tools list GitLab CLI as optional, signed in or how to sign in'
 
 test('integrations: Bitbucket is set up with an email and a token, which the page never shows, and forgotten again', async () => {
   const card = `(document.querySelector('#sec-bitbucket') || {}).innerText?.replace(/\\s+/g, ' ') || ''`;
-  await b.eval(`window.CS.go({ name: 'mcp' }); true`);
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; window.CS.go({ name: 'mcp' }); true`);
   await until(`${card}.includes('Bitbucket Cloud')`, 'the Bitbucket card');
   assert.match(await b.eval(card), /Opening pull requests not set up: needed only for repos on bitbucket\.org/);
+  assert.equal(await b.eval(`!!document.querySelector('#bb-email')`), false, 'folded to its name and status');
+  await b.eval(`document.querySelector('#sec-bitbucket [data-action="integ-fold"]').click(); true`);
+  await until(`!!document.querySelector('#bb-email')`, 'the card open');
   assert.equal(await b.eval(`document.querySelector('[data-action="bb-test"]').disabled`), true, 'nothing to test yet');
 
   await b.eval(`(() => { document.querySelector('#bb-email').value = 'ci@acme.com'; document.querySelector('#bb-token').value = 'bb-ui-secret-123'; document.querySelector('[data-action="bb-save"]').click(); return true; })()`);
@@ -219,6 +410,25 @@ test('integrations: Bitbucket is set up with an email and a token, which the pag
   await until(`!document.querySelector('[data-action="bb-forget"]')`, 'the token forgotten');
   assert.match(await b.eval(card), /Opening pull requests not set up/);
   assert.equal(await b.eval(`document.querySelector('[data-action="bb-test"]').disabled`), true);
+});
+
+test('integrations: Jira & Confluence and Bitbucket are folded to their status until you open one; a link to a card opens it', async () => {
+  const opened = (id) => `document.querySelector('#sec-${id} [data-action="integ-fold"]').getAttribute('aria-expanded') === 'true'`;
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; window.CS.go({ name: 'mcp' }); true`);
+  await until(`!!document.querySelector('#sec-atlassian')`, 'the Jira card');
+  assert.equal(await b.eval(`!!document.querySelector('#at-site') || !!document.querySelector('#bb-email')`), false, 'no fields while folded');
+  assert.match(await b.eval(`document.querySelector('#sec-atlassian').innerText`), /Reading tickets/, 'the status shows folded');
+
+  await b.eval(`document.querySelector('#sec-atlassian [data-action="integ-fold"]').click(); true`);
+  await until(`!!document.querySelector('#at-site')`, 'the Jira card open');
+  assert.equal(await b.eval(opened('bitbucket')), false, 'the other stays folded');
+  assert.deepEqual(await b.eval('window.CS.S.ui.integrationsOpen'), { atlassian: true }, 'kept for the next time');
+  await b.eval(`document.querySelector('#sec-atlassian [data-action="integ-fold"]').click(); true`);
+  await until(`!document.querySelector('#at-site')`, 'the Jira card folded');
+
+  await b.eval(`window.CS.go({ name: 'mcp', section: 'bitbucket' }); true`);
+  await until(`!!document.querySelector('#bb-email')`, 'the card a link names, open');
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; true`);
 });
 
 test('task list: an issue task gets a chip with its reference that opens the issue', async () => {
@@ -331,6 +541,26 @@ test('task tabs: ⌘-click on a task of the rail opens it in a tab; a plain clic
   await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
 });
 
+test('rail: the tasks are folded under Tasks until you open them, and stay as you leave them', async () => {
+  const tasks = [card('t-a', 'Alpha', true)];
+  const sections = [{ key: 'ungrouped', kind: 'ungrouped', label: 'Ungrouped', taskIds: ['t-a'] }];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: ${JSON.stringify(sections)} }; window.CS.S.ui.taskTabs = []; delete window.CS.S.ui.tasksOpen; window.CS.S.ui.treeOpen = { ungrouped: true }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  const root = `document.querySelector('.nav-item[data-action="tasks-toggle"]')`;
+  assert.equal(await b.eval(`${root}.getAttribute('aria-expanded')`), 'false', 'folded on a first load');
+  assert.equal(await b.eval(`!!document.querySelector('.tree-filter')`), false);
+
+  await b.eval(`${root}.click(); true`);
+  await until(`!!document.querySelector('.tree-filter')`, 'the tasks under Tasks');
+  assert.equal(await b.eval(`${root}.getAttribute('aria-expanded')`), 'true');
+  assert.equal(await b.eval('window.CS.S.ui.tasksOpen'), true, 'kept for the next time the page loads');
+
+  await b.eval(`${root}.click(); true`);
+  await until(`!document.querySelector('.tree-filter')`, 'the tasks folded again');
+  assert.equal(await b.eval('window.CS.S.ui.tasksOpen'), false);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.tasksOpen = true; await window.CS.loadOverview(); return true; })()`);
+});
+
 test('integrations: a hidden MCP server leaves the list for a folded one, and Show brings it back', async () => {
   const server = (name, state) => ({ name, scope: 'user', state, transport: 'http', target: `https://${name}.example/mcp`, canLogin: true, login: null });
   const servers = [server('asana', 'needs_auth'), server('jenkins', 'failed'), server('atlassian', 'connected')];
@@ -356,6 +586,34 @@ test('integrations: a hidden MCP server leaves the list for a folded one, and Sh
   await b.eval(`document.querySelector('.mcp-hidden [data-action="mcp-hide"][data-name="jenkins"]').click(); true`);
   await until(`!document.querySelector('.mcp-hidden-fold')`, 'jenkins back');
   assert.deepEqual(await shown(), ['asana', 'jenkins', 'atlassian']);
+});
+
+test("integrations: a server's menu gives it to an agent or takes it away; the agent keeps the servers it had", async () => {
+  // The servers of the test before: asana, jenkins, atlassian.
+  const agents = async () => Object.fromEntries((await b.eval(`window.CS.call('config')`)).agents.map((a) => [a.name, { mcp: a.mcp, mcpServers: a.mcpServers }]));
+  const wrap = (server) => `document.querySelector('.mcp-agents[data-server="${server}"]')`;
+  const ticked = (server, agent) => `${wrap(server)}.querySelector('[data-agent="${agent}"]').getAttribute('aria-checked') === 'true'`;
+  await until(`!!${wrap('asana')}`, 'the agents menu');
+  assert.deepEqual((await agents()).planner, { mcp: undefined, mcpServers: undefined }, 'the planner sees every server');
+  assert.equal(await b.eval(ticked('asana', 'planner')), true);
+  assert.equal(await b.eval(ticked('asana', 'developer')), false, 'the developer sees none (mcp: false)');
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-action="eff-menu"]').click(); ${wrap('asana')}.querySelector('[data-agent="planner"]').click(); true`);
+  await until(`!(${ticked('asana', 'planner')})`, 'asana taken from the planner');
+  assert.deepEqual((await agents()).planner.mcpServers, ['jenkins', 'atlassian'], 'the others stay');
+  assert.equal(await b.eval(`${wrap('asana')}.classList.contains('open')`), true, 'the menu stays open, for the next agent');
+  assert.equal(await b.eval(ticked('jenkins', 'planner')), true);
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-agent="developer"]').click(); true`);
+  await until(ticked('asana', 'developer'), 'asana given to the developer');
+  assert.deepEqual((await agents()).developer, { mcp: true, mcpServers: ['asana'] }, 'that server only');
+  assert.equal(await b.eval(ticked('jenkins', 'developer')), false);
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-agent="developer"]').click(); true`);
+  await until(`!(${ticked('asana', 'developer')})`, 'asana taken from the developer again');
+  assert.deepEqual((await agents()).developer, { mcp: false, mcpServers: undefined }, 'its last server taken: none at all');
+
+  await b.eval(`(async () => { await window.CS.call('updateAgent', { name: 'planner', patch: { mcpServers: null } }); await window.CS.call('updateAgent', { name: 'developer', patch: { mcp: null } }); return true; })()`);
 });
 
 test('composer: Stay awake names the tool of each system and whether this one has it, offers to install it, and takes hours', async () => {

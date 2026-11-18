@@ -224,6 +224,8 @@ interface Views {
   };
 
   /** What a task is for. The composer picks one from your words unless you choose. */
+  /** What the terminal button opens. */
+  const TERMINAL_HINT = 'Claude Code in a terminal, with Claudestrator in context: ask anything about the workspace and its tasks, hand work to any of its agents, or start a scenario as a task';
   const SCENARIO_INFO: Record<string, ScenarioInfo> = {
     deliver: { label: 'Deliver', icon: 'pr', hint: 'Plan → your approval → code and tests per repo → review → draft PRs', placeholder: 'Describe a task in plain words, or paste a Jira key (PROJ-123), an issue (#12, owner/repo#12) or a link to a Jira, GitHub, GitLab or Linear issue or a Confluence page…' },
     readiness: { label: 'Check readiness', icon: 'checklist', hint: 'Finds the work for a ticket and checks every acceptance criterion. Changes nothing.', placeholder: 'Paste a Jira key or an issue link (Jira, GitHub, GitLab, Linear), e.g. “PROJ-123 check it is ready and every acceptance criterion is met”, or describe what should be done…' },
@@ -461,7 +463,10 @@ interface Views {
               <button class="brand" data-action="go-home" data-region="workspace"></button>
               <button class="icon-btn rail-close" data-action="toggle-nav" aria-label="Close the menu" title="Close the menu">${icon('x')}</button>
             </div>
-            <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
+            <div class="rail-new-row">
+              <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
+              <button class="btn rail-terminal" data-action="claude-terminal" aria-label="Claude Code in a terminal" title="${esc(TERMINAL_HINT)}">${icon('terminal')}</button>
+            </div>
             <nav class="nav" data-region="nav" aria-label="Sections"></nav>
             <div class="rail-foot" data-region="rail-foot"></div>
           </aside>
@@ -470,6 +475,7 @@ interface Views {
             <header class="topbar">
               <button class="icon-btn" data-action="toggle-nav" aria-label="Open the menu" aria-controls="rail" aria-expanded="false" title="Menu">${icon('menu')}</button>
               <span class="topbar-title" data-region="topbar-title"></span>
+              <button class="icon-btn" data-action="claude-terminal" aria-label="Claude Code in a terminal" title="${esc(TERMINAL_HINT)}">${icon('terminal')}</button>
               <button class="icon-btn" data-action="new-task" aria-label="New task" title="New task (⌘⌥N)">${icon('plus')}</button>
             </header>
             <div data-region="task-tabs"></div>
@@ -496,7 +502,7 @@ interface Views {
     const o = S.overview;
     const attention = o ? o.tasks.filter((t) => t.status.group === 'attention').length : 0;
     const running = o ? o.tasks.filter((t) => t.status.group === 'running').length : 0;
-    const active = S.route.name === 'task' ? 'home' : S.route.name === 'scenario-diagram' ? 'scenarios' : S.route.name;
+    const active = S.route.name === 'task' ? 'home' : S.route.name === 'scenario-diagram' ? 'scenarios' : S.route.name === 'sync' ? 'repos' : S.route.name;
     /** A section's item; `action` replaces the link to the section (then it is never the current page). */
     const item = (n: (typeof NAV)[number], action?: string) => {
       let badge = '';
@@ -505,12 +511,12 @@ interface Views {
         const bad = o.mcp.problems;
         badge = bad ? `<span class="nb err" title="${plural(bad, 'server')} with a problem">${bad}</span>` : o.mcp.connected === o.mcp.total ? '<span class="mcp-dot s-connected" title="All connected"></span>' : '<span class="mcp-dot s-installed" title="Not checked yet"></span>';
       }
-      const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram'));
+      const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram') || (n.name === 'repos' && S.route.name === 'sync'));
       return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''}>${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
     };
-    // Tasks is the root of the tree, an item like the others: a click folds or opens the tasks under it (the logo opens
-    // the Tasks page). With no tasks yet it opens the page.
-    const tasksOpen = S.ui.tasksOpen !== false;
+    // Tasks is the root of the tree, an item like the others: a click opens or folds the tasks under it (the logo opens
+    // the Tasks page), folded until you open it. With no tasks yet it opens the page.
+    const tasksOpen = S.ui.tasksOpen === true;
     const tree = taskTree(o);
     const tasks = NAV.find((n) => n.name === 'home')!;
     const root = tree ? item(tasks, `data-action="tasks-toggle" aria-expanded="${tasksOpen}"`) : item(tasks);
@@ -1267,21 +1273,23 @@ interface Views {
       const picked = S.draft.scenario && S.draft.scenario !== 'auto' && S.draft.scenario === sc;
       const auto = (id: string) => sc === id && !picked && id !== 'deliver';
       const info = scInfo(sc);
-      // Only what to pick here; making, editing and deleting scenarios is the Scenarios page's.
+      // Only what to pick here; making, editing and deleting scenarios is the Scenarios page's. Each by its name; what it
+      // does shows on its ⓘ, under the pointer or the keyboard's focus.
       patch(
         'scenarios',
         `<span class="menu-wrap sc-select">
           <button class="sc-current sc-${info.custom ? 'custom' : sc}" data-action="eff-menu" aria-haspopup="menu" title="${esc(`${info.hint}${auto(sc) ? '\n\nPicked from your words; choose another to change it.' : ''}`)}">${icon(info.icon)}${esc(info.label)}${auto(sc) ? '<span class="sc-auto">auto</span>' : ''}<span class="sc-caret">▾</span></button>
-          <div class="menu sc-menu" role="menu">${this.scenarioIds()
+          <div class="menu sc-menu sc-names" role="menu">${this.scenarioIds()
             .map((id) => {
               const x = scInfo(id);
               return `<div class="sc-item ${sc === id ? 'current' : ''}">
-                <button class="sc-pick" role="menuitemradio" aria-checked="${sc === id}" data-action="set-scenario" data-id="${esc(id)}">${icon(sc === id ? 'check' : x.icon)}<span class="sc-text"><b>${esc(x.label)}${auto(id) ? '<span class="sc-auto">auto</span>' : ''}</b><span class="muted small">${esc(x.hint)}</span></span></button>
+                <button class="sc-pick" role="menuitemradio" aria-checked="${sc === id}" data-action="set-scenario" data-id="${esc(id)}">${icon(sc === id ? 'check' : x.icon)}<span class="sc-text"><b>${esc(x.label)}${auto(id) ? '<span class="sc-auto">auto</span>' : ''}</b></span></button>
+                ${x.hint ? `<span class="sc-info" tabindex="0" aria-label="${esc(`What ${x.label} does`)}">${icon('info')}<span class="sc-tip" role="tooltip">${esc(x.hint)}</span></span>` : ''}
               </div>`;
             })
             .join('')}
             <div class="sc-foot">
-              <button class="sc-manage" data-action="nav" data-name="scenarios">${icon('edit')}Manage scenarios…<span class="muted small">agents and their order, models and effort, new ones, backup</span></button>
+              <button class="sc-manage" data-action="nav" data-name="scenarios" title="Agents and their order, models and effort, new ones, backup">${icon('edit')}Manage scenarios…</button>
             </div></div>
         </span>`
       );
@@ -1804,6 +1812,10 @@ interface Views {
       setNavOpen(false);
       go({ name: 'home' });
     },
+    'claude-terminal': async () => {
+      setNavOpen(false);
+      if ((await attempt('claudeTerminal')) !== undefined) toast('Claude Code opened in a terminal, with Claudestrator in context', 'ok');
+    },
     'new-task': () => {
       setNavOpen(false);
       if (S.route.name === 'home') return $('#composer-text')?.focus();
@@ -2139,7 +2151,7 @@ interface Views {
       persist();
     },
     'tasks-toggle': () => {
-      S.ui.tasksOpen = S.ui.tasksOpen === false;
+      S.ui.tasksOpen = !S.ui.tasksOpen;
       persist();
       renderNav();
     },

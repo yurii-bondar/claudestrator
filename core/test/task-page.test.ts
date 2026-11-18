@@ -48,6 +48,8 @@ const POST_REVIEW = {
     text: 'Posted to https://github.com/acme/api/pull/12 as you choose, not before.',
     review: {
       url: 'https://github.com/acme/api/pull/12',
+      repo: 'api',
+      head: 'feat/cap',
       items: [
         { id: '0.0', agent: 'reviewer', severity: 'major', problem: 'bet() never checks <CAP>', fix: 'refuse x > CAP', path: 'src/cap.js', line: 2, inline: true },
         { id: '1.0', agent: 'appsec-reviewer', severity: 'minor', problem: 'log the refusal', inline: false },
@@ -67,8 +69,36 @@ test('task page: a reviewed pull request asks before its review is posted, and s
   assert.match(cp, /data-option="skip"[^>]*>[\s\S]*?Finish without posting<\/button>/);
   assert.match(cp, /<div class="cp-icon"><i data-icon="pr"><\/i><\/div>/);
 
-  const none = await taskScreen({ ...POST_REVIEW, checkpointContext: { ...POST_REVIEW.checkpointContext, review: { url: 'u', items: [] } } });
+  assert.match(cp, /data-action="fix-review" title="[^"]*from the pull request's branch feat\/cap[^"]*">[\s\S]*?Fix in new task<\/button>/);
+
+  const none = await taskScreen({ ...POST_REVIEW, checkpointContext: { ...POST_REVIEW.checkpointContext, review: { url: 'u', repo: 'api', head: 'feat/cap', items: [] } } });
   assert.match(none.regions['task-checkpoint']!, /The reviewers found nothing: only the summary with their verdicts goes\./);
+  assert.doesNotMatch(none.regions['task-checkpoint']!, /fix-review/, 'nothing to fix');
+});
+
+test('task page: Fix in new task opens a delivery task with the ticked findings, on the pull request\'s branch', async () => {
+  const routes: unknown[] = [];
+  const shell = { go: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) };
+  const ticked = await taskScreen({ ...POST_REVIEW, title: 'Cap bets' }, { shell, elements: { '.rv-pick': [{ checked: true, dataset: { id: '0.0' } }, { checked: false, dataset: { id: '1.0' } }] } });
+  await ticked.view.actions['fix-review']!({});
+  assert.deepEqual(routes, [
+    {
+      name: 'home',
+      scenario: 'deliver',
+      compose: [
+        'Fix what the review of https://github.com/acme/api/pull/12 found (Cap bets)',
+        '',
+        'In the repo api, on the pull request\'s branch: start from feat/cap (baseBranch "feat/cap"), so this fix\'s PR goes into it.',
+        '',
+        '- [major] src/cap.js:2 bet() never checks <CAP> → refuse x > CAP',
+      ].join('\n'),
+    },
+  ], 'the unticked one is left out');
+  assert.deepEqual(sent(ticked.calls), [], 'the review is not answered: it still waits to be posted or finished');
+
+  const unticked = await taskScreen(POST_REVIEW, { shell, elements: { '.rv-pick': [{ checked: false, dataset: { id: '0.0' } }] } });
+  await unticked.view.actions['fix-review']!({});
+  assert.equal(routes.length, 1, 'nothing ticked: no task');
 });
 
 test('task page: posting sends the findings you unticked, and skipping sends none', async () => {
@@ -163,4 +193,72 @@ test("task page: a split ticket's sub-tasks are listed with their titles and sta
   const cp = regions['task-checkpoint']!;
   assert.match(cp, /<b>CP-1164<\/b><span class="tt-title">\[BE\] RNG: seeds &lt;per round&gt;<\/span><span class="muted small">Not started<\/span>/, 'its key once, the title escaped');
   assert.match(cp, /<b>CP-1165<\/b><span class="tt-title">\[FE\] RNG panel<\/span>/);
+});
+
+/** The plan of `planScreen` with open questions: one with other answers and a task its default leaves out. */
+const QUESTIONS = [
+  { question: 'Exact match or a /24 <network>?', default: 'exact match', options: ['a /24 network', 'a /16 network'], followUp: 'A back-office setting per operator' },
+  { question: 'Log the mismatch?', default: 'yes, as a metric' },
+];
+const questionScreen = (blocking = false) => {
+  const screen = planScreen('CP-514', { kind: 'jira', label: 'CP-514' });
+  return { ...screen, title: 'Bind the session to the IP', plan: { ...screen.plan, openQuestions: QUESTIONS.map((q, i) => ({ ...q, ...(blocking && i === 0 && { blocking: true }) })) } };
+};
+const radio = (q: number, value: string) => ({ dataset: { q: String(q) }, value });
+
+test("task page: a plan's questions are answered in place, the planner's answer picked; approving goes with them", async () => {
+  const { regions, view, calls } = await taskScreen(questionScreen());
+  const cp = regions['task-checkpoint']!;
+  assert.match(cp, /<input type="radio" name="q-0" value="default" data-change="q-pick" data-q="0" checked><span class="q-label">exact match <span class="muted small">the planner's answer<\/span><\/span>/);
+  assert.match(cp, /name="q-0" value="o0" data-change="q-pick" data-q="0" ><span class="q-label">a \/24 network<\/span>/);
+  assert.match(cp, /name="q-0" value="own"[^>]*>[\s\S]*?<input class="input sm q-own" id="q-own-0" data-input="q-own" data-q="0"/);
+  assert.match(cp, /Exact match or a \/24 &lt;network&gt;\?/, 'escaped');
+  assert.match(cp, /Left for a task of its own: A back-office setting per operator<\/span><button class="btn sm" data-action="q-new-task" data-q="0"/);
+  assert.doesNotMatch(cp, /data-action="q-new-task" data-q="1"/, 'only where the default leaves one');
+  assert.match(cp, /data-option="approve" data-kind="primary"/, "approve goes with the planner's answers");
+  await view.actions.answer!({ dataset: { option: 'approve' }, classList: { add() {}, remove() {} } });
+  assert.deepEqual(sent(calls), [['answer', { taskId: 'CP-514', checkpointId: 'approve-plan', option: 'approve', at: 'now' }]], 'nothing for the planner to read');
+});
+
+test('task page: another answer, or one in your words, revises the plan with all the answers first', async () => {
+  const { regions, view, calls } = await taskScreen(questionScreen());
+  view.changes['q-pick']!(radio(0, 'o0'));
+  let cp = regions['task-checkpoint']!;
+  assert.doesNotMatch(cp, /data-option="approve"/, 'not approved past your answers');
+  assert.match(cp, /data-option="change" data-kind="primary"[^>]*>[\s\S]*?Revise the plan with your answers<\/button>/);
+  view.inputs['q-own']!({ dataset: { q: '1' }, value: 'no, only a log line' });
+  cp = regions['task-checkpoint']!;
+  assert.match(cp, /name="q-1" value="own"[^>]*checked/, 'writing picks your own answer');
+  await view.actions.answer!({ dataset: { option: 'change' }, classList: { add() {}, remove() {} } });
+  assert.deepEqual(sent(calls), [['answer', {
+    taskId: 'CP-514',
+    checkpointId: 'approve-plan',
+    option: 'change',
+    feedback: 'My answers to the open questions of the plan:\n1. Exact match or a /24 <network>?\n   → a /24 network (my pick)\n2. Log the mismatch?\n   → no, only a log line (in my words)',
+    at: 'now',
+  }]]);
+
+  // Back to the planner's answers: approving is there again; an empty answer of your own counts as its.
+  view.changes['q-pick']!(radio(0, 'default'));
+  view.inputs['q-own']!({ dataset: { q: '1' }, value: '  ' });
+  assert.match(regions['task-checkpoint']!, /data-option="approve" data-kind="primary"/);
+});
+
+test('task page: a question that waits for you sends the answers, the proposed ones too, with the revision', async () => {
+  const { regions, view, calls } = await taskScreen(questionScreen(true));
+  const cp = regions['task-checkpoint']!;
+  assert.match(cp, /<h2>The plan needs your answer<\/h2>/);
+  assert.match(cp, /exact match <span class="muted small">the planner's proposal<\/span>/);
+  assert.match(cp, /data-option="change" data-kind="primary"[^>]*>[\s\S]*?Answer and revise the plan<\/button>/);
+  await view.actions.answer!({ dataset: { option: 'change' }, classList: { add() {}, remove() {} } });
+  const [answer] = sent(calls) as [string, { feedback: string }][];
+  assert.equal(answer![1].feedback, "My answers to the open questions of the plan:\n1. Exact match or a /24 <network>?\n   → exact match (your answer, kept)\n2. Log the mismatch?\n   → yes, as a metric (your answer, kept)", 'no words of your own needed');
+});
+
+test("task page: New task starts the work a question's answer leaves out, with where it came from", async () => {
+  const routes: unknown[] = [];
+  const { view } = await taskScreen(questionScreen(), { shell: { go: (r: unknown) => routes.push(JSON.parse(JSON.stringify(r))) } });
+  view.changes['q-pick']!(radio(0, 'o1'));
+  view.actions['q-new-task']!({ dataset: { q: '0' } });
+  assert.deepEqual(routes, [{ name: 'home', scenario: 'deliver', compose: 'A back-office setting per operator\n\nLeft out of CP-514 (Bind the session to the IP) by its plan.\nThe question there: Exact match or a /24 <network>?\nIts answer: a /16 network' }]);
 });
