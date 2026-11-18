@@ -63,6 +63,7 @@ type FeedEvent = import('../src/wire').FeedEvent;
 type PipelineEdit = import('../src/wire').PipelineEdit;
 type CheckpointContext = import('../src/wire').CheckpointContext;
 type ReviewItemView = import('../src/wire').ReviewItemView;
+type PlanQuestion = import('../src/types').PlanQuestion;
 type SyncRun = import('../src/wire').SyncRun;
 type RepoSync = import('../src/wire').RepoSync;
 type MergedBranch = import('../src/wire').MergedBranch;
@@ -83,7 +84,7 @@ type Attempted<R> = (R extends void ? true : R) | undefined;
 type DataKey =
   | 'name' | 'id' | 'repo' | 'path' | 'i' | 'j' | 'field' | 'file' | 'preview' | 'tab' | 'url' | 'pipe' | 'tool' | 'since'
   | 'sev' | 'scenario' | 'level' | 'kind' | 'dir' | 'allow' | 'text' | 'seq' | 'runs' | 'option' | 'cmd' | 'key' | 'action'
-  | 'change' | 'input' | 'href';
+  | 'change' | 'input' | 'href' | 'q';
 interface WithData {
   readonly dataset: Readonly<Record<DataKey, string>>;
 }

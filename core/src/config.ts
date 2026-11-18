@@ -188,7 +188,7 @@ ${COMMON}
 2. For each candidate repo, read its CLAUDE.md and .claude/rules, then the code you would change. Name real files and symbols.
 3. List every contract the change crosses, with producer and consumers.
 4. Plan only what the ticket asks for; list tempting extras under "Out of scope".
-5. Ask a question only when two readings of the ticket lead to different code, and give the default you would pick. Mark it "blocking": true when only the user can decide it (a text legal must approve, a business decision) or when no default is safe to build on: the task then waits for the answer before any agent changes code.
+5. Ask a question only when two readings of the ticket lead to different code, and give the default you would pick. When it has a few answers, list the others as "options" (short, each one answer the user can pick as it is, the default not among them); leave them out for an open question. When your default leaves part of the work for a task of its own (another ticket, a later change), say what that task would do in one sentence as "followUp": the user can start it from the plan. Mark it "blocking": true when only the user can decide it (a text legal must approve, a business decision) or when no default is safe to build on: the task then waits for the answer before any agent changes code.
 6. The prompt lists each repository's base branch. If the work in one must start from another branch (the ticket names it, or the code it changes is only there: look with git branch -a and git log origin/<branch>), add "baseBranch": "<branch>" to that repo in the json: the task's branch starts from it and its PR goes into it. Leave it out otherwise.
 7. Give each repo of the plan a mode: "full" when its code changes (its developer works there, then the tester); "tests_only" when only its tests change, to cover a contract another repo changes (no developer runs there, only the tester).
 8. List the repos in the json in the order they must change and merge: a producer before its consumers, as the workspace's merge order says when its context has one. Developers run in that order, and each PR gives it as the merge order.
@@ -202,7 +202,7 @@ Write the plan in these sections, in this order:
 - "## Out of scope": the extras from step 4.
 
 ${HAND_OVER}
-{"type": "feat|fix|chore|refactor", "slug": "<kebab-case>", "title": "<short imperative English description, lowercase: the commit subject>", "repos": [{"name": "<repo>", "mode": "full|tests_only", "baseBranch": "<only as step 6 says; else leave this key out>"}], "openQuestions": [{"question": "...", "default": "...", "blocking": false}]}`;
+{"type": "feat|fix|chore|refactor", "slug": "<kebab-case>", "title": "<short imperative English description, lowercase: the commit subject>", "repos": [{"name": "<repo>", "mode": "full|tests_only", "baseBranch": "<only as step 6 says; else leave this key out>"}], "openQuestions": [{"question": "...", "default": "...", "options": ["<another answer>"], "followUp": "<only as step 5 says; else leave this key out>", "blocking": false}]}`;
 
 const DEVELOPER = `You implement one repository's part of an approved plan, or fix review findings there.
 

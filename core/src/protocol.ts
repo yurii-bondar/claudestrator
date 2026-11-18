@@ -310,7 +310,7 @@ const PLAN = T.obj(
     slug: T.re(SLUG_PATTERN, 'slug must be kebab-case latin'),
     'title?': T.str(1, 100),
     repos: T.arr(T.obj({ name: T.str(1), 'mode?': T.oneOf(['full', 'tests_only']), 'baseBranch?': BRANCH }), 1),
-    'openQuestions?': T.arr(T.obj({ question: T.str(), default: T.str(), 'blocking?': T.bool() }, { strict: false })),
+    'openQuestions?': T.arr(T.obj({ question: T.str(), default: T.str(), 'options?': T.arr(T.str(1)), 'followUp?': T.str(1), 'blocking?': T.bool() }, { strict: false })),
   },
   { strict: false }
 );
@@ -330,7 +330,11 @@ function parsePlanMeta(raw: unknown): ParseResult<PlanMeta> {
       slug: v.slug,
       ...(v.title && { title: v.title }),
       repos: v.repos.map((r) => ({ name: r.name, mode: r.mode || 'full', ...(r.baseBranch && { baseBranch: r.baseBranch }) })),
-      openQuestions: (v.openQuestions || []).map((q) => ({ question: q.question, default: q.default, ...(q.blocking === true && { blocking: true }) })),
+      openQuestions: (v.openQuestions || []).map((q) => {
+        // The default is offered as the default: an option that repeats it is not offered twice.
+        const options = (q.options || []).map((o) => o.trim()).filter((o, i, all) => o && o !== q.default.trim() && all.indexOf(o) === i);
+        return { question: q.question, default: q.default, ...(options.length && { options }), ...(q.followUp && q.followUp.trim() && { followUp: q.followUp.trim() }), ...(q.blocking === true && { blocking: true }) };
+      }),
     },
   };
 }
@@ -341,7 +345,7 @@ interface RawPlan {
   slug: string;
   title?: string;
   repos: { name: string; mode?: 'full' | 'tests_only'; baseBranch?: string }[];
-  openQuestions?: { question: string; default: string; blocking?: boolean }[];
+  openQuestions?: { question: string; default: string; options?: string[]; followUp?: string; blocking?: boolean }[];
 }
 interface RawVerdict {
   status: 'approved' | 'changes_requested';

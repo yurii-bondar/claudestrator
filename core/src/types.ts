@@ -124,6 +124,10 @@ export interface PlanQuestion {
    * the answer: the plan waits for it, also in a task that runs on its own.
    */
   blocking?: boolean;
+  /** Other answers the user may pick, besides the default: when the question has a few. */
+  options?: string[];
+  /** The default leaves part of the work for a task of its own: what that task would do, to start it from the plan. */
+  followUp?: string;
 }
 
 export interface Finding {

@@ -148,6 +148,8 @@ interface Views {
     feedback: string;
     /** Audit findings shown: 'all' or one severity. */
     sev: string;
+    /** Your answers to the open questions of the plan on screen (asked at `at`), by question: what you picked, your words. */
+    answers: { at: string | null; byQ: Record<number, { pick: string; text: string }> };
   } = {
     taskId: '',
     d: null,
@@ -162,6 +164,7 @@ interface Views {
     cpKey: null,
     feedback: '',
     sev: 'all',
+    answers: { at: null, byQ: {} },
   };
 
   const VERDICT_UI: Record<string, { label: string; icon: string; tone: string; lead: string }> = {
@@ -426,7 +429,11 @@ interface Views {
         const checkpointId = T.d!.checkpointFull!.id;
         const spec = cpUi(T.d!.checkpointFull!).options[option];
         const ta = $<HTMLTextAreaElement>('#cp-feedback');
-        const feedback = ta ? ta.value.trim() : '';
+        const words = ta ? ta.value.trim() : '';
+        // A revision of the plan carries your answers to its questions, when you gave other ones or it waits for them.
+        const answers = checkpointId === 'approve-plan' && option === 'change' ? planAnswers(T.d!) : null;
+        const withAnswers = Boolean(answers && (answers.changed || T.d!.plan!.openQuestions.some((q) => q.blocking === true)));
+        const feedback = [withAnswers ? answers!.text : '', words].filter(Boolean).join('\n\n');
         if (spec?.feedback === 'required' && !feedback) {
           ta!.focus();
           shake(ta);
@@ -445,6 +452,15 @@ interface Views {
           toast(option === 'stop' ? 'Task stopped. The question waits for you when you resume.' : 'Got it, continuing…', 'ok');
           views.task.refresh();
         }
+      },
+      // The work an answer leaves for a task of its own, as a delivery task to start.
+      'q-new-task': (el) => {
+        const d = T.d!;
+        const i = Number(el.dataset.q);
+        const q = d.plan && d.plan.openQuestions[i];
+        if (!q || !q.followUp) return;
+        const answer = answerOf(q, T.answers.byQ[i]);
+        go({ name: 'home', scenario: 'deliver', compose: `${q.followUp}\n\nLeft out of ${d.taskId} (${d.title}) by its plan.\nThe question there: ${q.question}\nIts answer: ${answer.text}` });
       },
       'send-message': sendMessage,
       'open-artifact': (el) => attempt('openFile', { taskId: T.taskId, file: el.dataset.file, preview: el.dataset.preview === '1' }),
@@ -540,8 +556,22 @@ interface Views {
         persist();
         showFixPick();
       },
+      'q-pick': (el) => {
+        const i = Number(el.dataset.q);
+        T.answers.byQ[i] = { pick: el.value, text: (T.answers.byQ[i] && T.answers.byQ[i]!.text) || '' };
+        redrawCheckpoint();
+        if (el.value === 'own') $<HTMLInputElement>(`#q-own-${i}`)?.focus();
+      },
     },
     inputs: {
+      // Writing your own answer picks it; the buttons change only when that changes what is answered.
+      'q-own': (el) => {
+        const i = Number(el.dataset.q);
+        const was = T.answers.byQ[i];
+        const before = was ? was.pick === 'own' && Boolean(was.text.trim()) : false;
+        T.answers.byQ[i] = { pick: 'own', text: el.value };
+        if (!was || was.pick !== 'own' || before !== Boolean(el.value.trim())) redrawCheckpoint();
+      },
       'cp-feedback': (el) => {
         T.feedback = el.value;
         const hint = $('#cp-kbd');
@@ -694,18 +724,21 @@ interface Views {
           title: 'The plan needs your answer',
           lead: 'The planner left a question only you can answer, and without it no agent should change code. Answer it below: the planner revises the plan with your answer, and you approve that one.',
           options: { ...base.options, change: { label: 'Answer and revise the plan', kind: 'primary', icon: 'edit', feedback: 'required' } },
-          placeholder: 'Your answer to the question marked "needs your answer", e.g. the wording legal approved',
+          placeholder: 'Anything else the planner should know (optional)',
         }
       : base;
     const ctx: Partial<CheckpointContext> = d.checkpointContext ?? {};
     const stopped = d.status.key === 'stopped';
+    // A new plan asks anew: the answers to the one before are not its own.
+    if (T.answers.at !== cp.at) T.answers = { at: cp.at, byQ: {} };
+    const answers = cp.id === 'approve-plan' ? planAnswers(d) : null;
     let body = '';
     if (cp.id === 'approve-plan') {
       const plan = d.plan;
       const questions = plan ? plan.openQuestions : [];
       body = `
         ${plan ? `<div class="plan-meta"><span class="chip">${esc(plan.type)}</span><span class="chip mono">${icon('branch')}${esc(`${plan.type}/${d.source && d.source.kind !== 'text' && d.source.kind !== 'confluence' ? `${d.taskId}-` : ''}${plan.slug}`)}</span>${plan.repos.map((r) => `<span class="chip" ${r.baseBranch ? `title="The task's branch starts from ${esc(r.baseBranch)}, and its PR goes into it"` : ''}>${icon('repo')}${esc(r.name)}${r.mode === 'tests_only' ? ' · tests only' : ''}${r.baseBranch ? ` · from ${esc(r.baseBranch)}` : ''}</span>`).join('')}</div>` : ''}
-        ${questions.length ? `<div class="questions"><h4>${icon('info')}Open questions <span class="muted">(the planner's default applies unless you say otherwise${waits ? '; the ones marked need your answer' : ''})</span></h4>${questions.map((q) => `<div class="q">${q.blocking ? `<span class="chip warn">${icon('user')}needs your answer</span>` : ''}<div>${esc(q.question)}</div><div class="muted small">${q.blocking ? 'Without an answer' : 'Default'}: ${esc(q.default)}</div></div>`).join('')}</div>` : ''}
+        ${questions.length ? `<div class="questions"><h4>${icon('info')}Open questions</h4><p class="muted small q-lead">${answers && answers.changed ? 'Your answers go to the planner, which revises the plan; you approve that one.' : waits ? 'The planner proposes an answer to each: pick one or write yours, and it revises the plan with them.' : "The planner's answers are picked: Approve plan goes with them. Pick another or write yours, and it revises the plan first."}</p>${questions.map(questionHtml).join('')}</div>` : ''}
         <div class="doc-frame"><div class="markdown">${md(stripJsonBlock(ctx.text || ''))}</div></div>
         ${ctx.file ? `<button class="link small" data-action="open-artifact" data-file="${esc(ctx.file)}" data-preview="1">${icon('ext')}Open the plan in an editor</button>` : ''}`;
     } else if (cp.id === 'review-limit') {
@@ -759,14 +792,18 @@ interface Views {
     }
     const needsFeedback = Object.keys(ui.options).some((o) => cp.options.includes(o) && ui.options[o]?.feedback);
     // Applying is off in Settings → Safety: what is left is to go on without the changes, or to stop.
+    // Answers other than the planner's change the plan: it is revised with them before you approve it.
+    const revise = Boolean(answers && (answers.changed || waits));
+    const options: Record<string, CpOption> = revise ? { ...ui.options, change: { label: waits ? 'Answer and revise the plan' : 'Revise the plan with your answers', kind: 'primary', icon: 'edit', feedback: 'optional' } } : ui.options;
     const buttons = cp.options
       .filter((o) => !(cp.id === 'protected-changes' && o === 'apply' && ctx.canApply === false))
+      .filter((o) => !(revise && (o === 'approve' || o === 'approve-post')))
       .map((o) => {
-        const spec: CpOption = ui.options[o] || { label: o, kind: 'secondary', icon: 'chevron' };
+        const spec: CpOption = options[o] || { label: o, kind: 'secondary', icon: 'chevron' };
         return `<button class="btn ${spec.kind === 'primary' ? 'primary' : spec.kind === 'warn' ? 'warn' : spec.kind === 'ghost' ? 'ghost' : ''}" data-action="answer" data-option="${o}" data-kind="${spec.kind}" title="${esc(spec.hint || '')}">${icon(spec.icon || 'chevron')}${esc(spec.label)}</button>`;
       })
       .join('');
-    const keyed = submitOption(cp, ui);
+    const keyed = submitOption(cp, { ...ui, options });
     return `<section class="checkpoint card cp-${cp.id}">
       <div class="cp-head">
         <div class="cp-icon">${icon(cp.id === 'confirm-push' || cp.id === 'post-review' ? 'pr' : cp.id === 'approve-plan' ? 'eye' : 'alert')}</div>
@@ -777,6 +814,48 @@ interface Views {
       ${needsFeedback ? `<textarea id="cp-feedback" class="input autosize" rows="2" data-input="cp-feedback" placeholder="${esc(ui.placeholder || 'Feedback (optional)')}">${esc(T.feedback)}</textarea>` : ''}
       <div class="cp-actions">${buttons}${cp.id === 'post-review' && ctx.review && ctx.review.items.length ? `<button class="btn" data-action="fix-review" title="A delivery task prefilled with the ticked findings, starting from the pull request's branch ${esc(ctx.review.head)}: its PR goes into that branch. This review still waits here: post it or finish it after.">${icon('play')}Fix in new task</button>` : ''}${d.fix === 'checkpoint' ? fixButton('') : ''}<span class="muted small kbd-hint"><kbd>⌘↵</kbd> <span id="cp-kbd">${esc((keyed !== undefined && ui.options[keyed]?.label) || '')}</span></span></div>
     </section>`;
+  }
+
+  /** The question on screen drawn again, with what you typed in it: the screen's render leaves it while it is the same one. */
+  function redrawCheckpoint(): void {
+    if (T.d && T.d.checkpointFull) patch('task-checkpoint', checkpointHtml(T.d));
+  }
+
+  /** What you answered a question of the plan: one of its answers, or your own words (empty, they count as its default). */
+  function answerOf(q: PlanQuestion, a: { pick: string; text: string } | undefined): { text: string; kind: 'default' | 'option' | 'own' } {
+    if (a && a.pick === 'own' && a.text.trim()) return { text: a.text.trim(), kind: 'own' };
+    const option = a && /^o\d+$/.test(a.pick) ? (q.options || [])[Number(a.pick.slice(1))] : undefined;
+    return option ? { text: option, kind: 'option' } : { text: q.default, kind: 'default' };
+  }
+
+  /** Your answers to the plan's questions, as the planner reads them, and whether any is other than its own. */
+  function planAnswers(d: TaskScreen): { changed: boolean; text: string } | null {
+    const qs = (d.plan && d.plan.openQuestions) || [];
+    if (!qs.length) return null;
+    const answers = qs.map((q, i) => answerOf(q, T.answers.byQ[i]));
+    const said = { default: ' (your answer, kept)', option: ' (my pick)', own: ' (in my words)' };
+    return {
+      changed: answers.some((a) => a.kind !== 'default'),
+      text: ['My answers to the open questions of the plan:', ...qs.map((q, i) => `${i + 1}. ${q.question}\n   → ${answers[i]!.text}${said[answers[i]!.kind]}`)].join('\n'),
+    };
+  }
+
+  /** An open question of the plan: the planner's answer (picked), its other answers, yours; and the task it leaves out. */
+  function questionHtml(q: PlanQuestion, i: number): string {
+    const a = T.answers.byQ[i];
+    const pick = a ? a.pick : 'default';
+    const choice = (value: string, label: string, extra = '') =>
+      `<label class="q-choice ${pick === value ? 'on' : ''}"><input type="radio" name="q-${i}" value="${value}" data-change="q-pick" data-q="${i}" ${pick === value ? 'checked' : ''}><span class="q-label">${label}</span>${extra}</label>`;
+    return `<div class="q">
+      ${q.blocking ? `<span class="chip warn">${icon('user')}needs your answer</span>` : ''}
+      <div class="q-text">${esc(q.question)}</div>
+      <div class="q-choices" role="radiogroup">
+        ${choice('default', `${esc(q.default)} <span class="muted small">${q.blocking ? "the planner's proposal" : "the planner's answer"}</span>`)}
+        ${(q.options || []).map((o, k) => choice(`o${k}`, esc(o))).join('')}
+        ${choice('own', 'Your answer', `<input class="input sm q-own" id="q-own-${i}" data-input="q-own" data-q="${i}" value="${esc((a && a.text) || '')}" placeholder="In your words" aria-label="Your answer">`)}
+      </div>
+      ${q.followUp ? `<div class="q-follow">${icon('info')}<span class="muted small grow">Left for a task of its own: ${esc(q.followUp)}</span><button class="btn sm" data-action="q-new-task" data-q="${i}" title="A delivery task prefilled with this work">${icon('plus')}New task</button></div>` : ''}
+    </div>`;
   }
 
   /**

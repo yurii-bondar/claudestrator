@@ -41,7 +41,7 @@ async function taskScreen(screen: Record<string, unknown>, { ui = {}, elements =
     ticket: '', pipelineEdit: null, flow: [], fix: null, taskDir: '/ws/.orch/tasks/T-1', ...screen,
   };
   const S = { route: { name: 'task', taskId: d.taskId }, overview: { defaults: null, ...overview }, ui: { ...ui }, draft: {} };
-  const views: Record<string, { enter(r: unknown): Promise<void>; actions: Record<string, (el: unknown) => unknown>; changes: Record<string, (el: unknown) => unknown> }> = {};
+  const views: Record<string, { enter(r: unknown): Promise<void>; actions: Record<string, (el: unknown) => unknown>; changes: Record<string, (el: unknown) => unknown>; inputs: Record<string, (el: unknown) => unknown> }> = {};
   const known: Record<string, unknown> = {
     S,
     views,

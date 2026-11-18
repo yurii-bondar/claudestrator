@@ -599,6 +599,19 @@ body.vscode-high-contrast .tc-marker { background: transparent; box-shadow: inse
 .questions h4 { color: var(--cs-status-run-text); text-transform: none; letter-spacing: 0; font-size: var(--cs-font-sm); }
 .q { padding: 4px 0; border-top: 1px solid var(--cs-border-default); }
 .q:first-of-type { border-top: 0; }
+/* An open question of the plan, answered here: the planner's answer picked, its other answers, or yours. */
+.q { display: flex; flex-direction: column; gap: 6px; padding: var(--cs-space-2) 0; }
+.q > .chip { align-self: flex-start; }
+.q-lead { margin: 2px 0 var(--cs-space-1); }
+.q-text { font-weight: var(--cs-weight-strong); }
+.q-choices { display: flex; flex-direction: column; gap: 2px; }
+.q-choice { display: flex; align-items: center; gap: var(--cs-space-2); padding: 3px var(--cs-space-2); border-radius: var(--cs-radius-sm); cursor: pointer; }
+.q-choice:hover { background: var(--cs-bg-hover); }
+.q-choice.on { background: var(--cs-bg-selected); }
+.q-choice input[type="radio"] { flex: none; margin: 0; }
+.q-label { min-width: 0; }
+.q-own { flex: 1; min-width: 160px; }
+.q-follow { display: flex; align-items: center; gap: var(--cs-space-2); flex-wrap: wrap; }
 .doc-frame { max-height: 62vh; overflow: auto; border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-md); padding: 6px 18px; background: var(--cs-bg-app); }
 .push-table { display: flex; flex-direction: column; gap: 6px; }
 .push-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-radius: var(--cs-radius-md); background: var(--cs-bg-app); border: 1px solid var(--cs-border-default); }
