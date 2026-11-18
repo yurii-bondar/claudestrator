@@ -166,8 +166,9 @@ test('composer: a pull request link picks PR review, says what it will do, and w
 test("composer: the scenarios menu lists each by its name; what one does shows only on its ⓘ", async () => {
   await b.eval(`(async () => { window.__overview = {}; await window.CS.loadOverview(); await window.CS.go({ name: 'home' }); return true; })()`);
   await until(`!!document.querySelector('.sc-select .sc-current')`, 'the scenario picker');
+  assert.equal(await b.eval(`getComputedStyle(document.querySelector('.sc-select .menu')).display`), 'none', 'closed until its button opens it');
   await b.eval(`document.querySelector('.sc-select').classList.add('open'); true`);
-  const deliver = `document.querySelector('.sc-list .sc-item:has([data-id="deliver"])')`;
+  const deliver = `document.querySelector('.sc-names .sc-item:has([data-id="deliver"])')`;
   assert.equal(await b.eval(`${deliver}.querySelector('.sc-pick').innerText.trim()`), 'Deliver', 'the name alone');
   const tip = `${deliver}.querySelector('.sc-tip')`;
   assert.match(await b.eval(`${tip}.textContent`), /Plan → your approval/);
