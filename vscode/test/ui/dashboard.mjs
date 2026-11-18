@@ -331,6 +331,26 @@ test('task tabs: ⌘-click on a task of the rail opens it in a tab; a plain clic
   await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.taskTabs = []; await window.CS.loadOverview(); return true; })()`);
 });
 
+test('rail: the tasks are folded under Tasks until you open them, and stay as you leave them', async () => {
+  const tasks = [card('t-a', 'Alpha', true)];
+  const sections = [{ key: 'ungrouped', kind: 'ungrouped', label: 'Ungrouped', taskIds: ['t-a'] }];
+  await b.eval(`(async () => { window.__overview = { tasks: ${JSON.stringify(tasks)}, sections: ${JSON.stringify(sections)} }; window.CS.S.ui.taskTabs = []; delete window.CS.S.ui.tasksOpen; window.CS.S.ui.treeOpen = { ungrouped: true }; await window.CS.loadOverview(); await window.CS.go({ name: 'settings' }); return true; })()`);
+  const root = `document.querySelector('.nav-item[data-action="tasks-toggle"]')`;
+  assert.equal(await b.eval(`${root}.getAttribute('aria-expanded')`), 'false', 'folded on a first load');
+  assert.equal(await b.eval(`!!document.querySelector('.tree-filter')`), false);
+
+  await b.eval(`${root}.click(); true`);
+  await until(`!!document.querySelector('.tree-filter')`, 'the tasks under Tasks');
+  assert.equal(await b.eval(`${root}.getAttribute('aria-expanded')`), 'true');
+  assert.equal(await b.eval('window.CS.S.ui.tasksOpen'), true, 'kept for the next time the page loads');
+
+  await b.eval(`${root}.click(); true`);
+  await until(`!document.querySelector('.tree-filter')`, 'the tasks folded again');
+  assert.equal(await b.eval('window.CS.S.ui.tasksOpen'), false);
+
+  await b.eval(`(async () => { window.__overview = {}; window.CS.S.ui.tasksOpen = true; await window.CS.loadOverview(); return true; })()`);
+});
+
 test('integrations: a hidden MCP server leaves the list for a folded one, and Show brings it back', async () => {
   const server = (name, state) => ({ name, scope: 'user', state, transport: 'http', target: `https://${name}.example/mcp`, canLogin: true, login: null });
   const servers = [server('asana', 'needs_auth'), server('jenkins', 'failed'), server('atlassian', 'connected')];
