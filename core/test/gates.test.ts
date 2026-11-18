@@ -50,8 +50,9 @@ test('gates: stdout and stderr both kept, non-ASCII intact, and a stopped run sk
   const repo: RepoConfig = { name: 'api', path: dir, baseBranch: 'main', gates: [{ name: 'slow', cmd: 'sleep 30' }, { name: 'lint', cmd: 'true' }] };
   const abort = new AbortController();
   const started = Date.now();
-  setTimeout(() => abort.abort(), 200);
-  const r = await runGates({ repo, dir, logDir: path.join(dir, 'logs'), signal: abort.signal });
+  // Stopped once the slow gate runs, however long the git calls before it take on a busy machine.
+  const onGate = (name: string): void => void (name === 'slow' && setTimeout(() => abort.abort(), 200));
+  const r = await runGates({ repo, dir, logDir: path.join(dir, 'logs'), signal: abort.signal, onGate });
   assert.ok(Date.now() - started < 5000, 'stopping does not wait for the gate');
   assert.deepEqual(r.results.map((x) => [x.gate, x.status]), [['slow', 'fail'], ['lint', 'skipped']]);
   assert.match(fs.readFileSync(path.join(dir, 'logs', 'api.slow.log'), 'utf8'), /stopped with the task/);
