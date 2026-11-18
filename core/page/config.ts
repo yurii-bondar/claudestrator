@@ -700,17 +700,27 @@ interface Views {
     return (keyPath: string[]) => (fromProject(keyPath) ? '<span class="chip small" title="Set in this workspace\'s config.yaml">workspace</span>' : '');
   }
 
+  /** Whether a card of the Integrations page is open: each is folded to its name and status until you open it. */
+  const integrationOpen = (key: string): boolean => Boolean(S.ui.integrationsOpen && S.ui.integrationsOpen[key]);
+
+  /** A card's name on the Integrations page, as the button that opens or folds the card. */
+  function integrationHead(key: string, glyph: string, name: string) {
+    const open = integrationOpen(key);
+    return `<h3><button class="integ-fold" data-action="integ-fold" data-key="${key}" aria-expanded="${open}" title="${open ? 'Fold' : 'Open its settings'}">${icon('chevron', 'chev')}${icon(glyph)}${esc(name)}</button></h3>`;
+  }
+
   /** Bitbucket Cloud, on the Integrations page: the API token its repos' pull requests are opened with. */
   function bitbucketSection(s: SettingsData) {
     const b = s.bitbucket;
-    return `<section class="card settings-card" id="sec-bitbucket"><h3>${icon('pr')}Bitbucket Cloud</h3>
-      ${b.connected ? `<div class="tool-check ok">${icon('check')}<b>Opening pull requests</b><span>with the API token below, for repos whose origin is on bitbucket.org</span></div>` : `<div class="tool-check">${icon('info')}<b>Opening pull requests</b><span>not set up: needed only for repos on bitbucket.org (GitHub uses gh, GitLab glab)</span></div>`}
-      <p class="muted small">Bitbucket has no CLI like gh, so Claudestrator opens its pull requests over Bitbucket's API, with an Atlassian API token with Bitbucket's scopes (pull requests: read and write; repositories and your account: read). It is kept in ${SECRET_STORE}, and no agent gets it. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
+    const open = integrationOpen('bitbucket');
+    return `<section class="card settings-card integ-card" id="sec-bitbucket">${integrationHead('bitbucket', 'pr', 'Bitbucket Cloud')}
+      ${b.connected ? `<div class="tool-check ok">${icon('check')}<b>Opening pull requests</b><span>with the API token ${open ? 'below' : 'saved here'}, for repos whose origin is on bitbucket.org</span></div>` : `<div class="tool-check">${icon('info')}<b>Opening pull requests</b><span>not set up: needed only for repos on bitbucket.org (GitHub uses gh, GitLab glab)</span></div>`}
+      ${open ? `<p class="muted small">Bitbucket has no CLI like gh, so Claudestrator opens its pull requests over Bitbucket's API, with an Atlassian API token with Bitbucket's scopes (pull requests: read and write; repositories and your account: read). It is kept in ${SECRET_STORE}, and no agent gets it. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
       <div class="field-row">
         <label class="field"><span>Email <span class="muted">empty = the Jira email</span></span><input id="bb-email" class="input" value="${esc(b.email)}" placeholder="${esc(s.atlassian.email || 'you@acme.com')}"></label>
         <label class="field"><span>API token ${b.hasToken ? '<span class="badge tone-ok">saved</span>' : b.fromEnv ? '<span class="chip small">from env</span>' : ''}</span><input id="bb-token" class="input mono" type="password" placeholder="${b.hasToken ? '•••••••• (leave empty to keep)' : 'paste the token'}"></label>
       </div>
-      <div class="row"><button class="btn primary sm" data-action="bb-save">${icon('check')}Save</button><button class="btn sm" data-action="bb-test" ${b.connected ? '' : 'disabled'}>${icon('zap')}Test connection</button>${b.hasToken ? `<button class="btn ghost sm danger" data-action="bb-forget">Forget token</button>` : ''}</div>
+      <div class="row"><button class="btn primary sm" data-action="bb-save">${icon('check')}Save</button><button class="btn sm" data-action="bb-test" ${b.connected ? '' : 'disabled'}>${icon('zap')}Test connection</button>${b.hasToken ? `<button class="btn ghost sm danger" data-action="bb-forget">Forget token</button>` : ''}</div>` : ''}
     </section>`;
   }
 
@@ -718,9 +728,10 @@ interface Views {
   function atlassianSection(s: SettingsData, c: ConfigData) {
     const cfg = c.ok ? c.config : null;
     const tag = projectTag(c);
-    return `<section class="card settings-card" id="sec-atlassian"><h3>${icon('jira')}Jira & Confluence</h3>
-      ${s.atlassian.connected ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>with the API token below (Jira REST)</span></div>` : s.atlassian.mcp ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>through the MCP server “${esc(s.atlassian.mcp.server)}”, signed in with Claude Code. No token needed; a short read-only agent reads each issue (a few cents).</span></div>` : `<div class="tool-check bad">${icon('alert')}<b>Reading tickets</b><span>not set up: sign in to an Atlassian MCP server below, or add an API token</span></div>`}
-      <p class="muted small">An API token (optional with MCP) makes reading instant and free, and lets Claudestrator post Jira comments. It is kept in ${SECRET_STORE}. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
+    const open = integrationOpen('atlassian');
+    return `<section class="card settings-card integ-card" id="sec-atlassian">${integrationHead('atlassian', 'jira', 'Jira & Confluence')}
+      ${s.atlassian.connected ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>with the API token ${open ? 'below' : 'saved here'} (Jira REST)</span></div>` : s.atlassian.mcp ? `<div class="tool-check ok">${icon('check')}<b>Reading tickets</b><span>through the MCP server “${esc(s.atlassian.mcp.server)}”, signed in with Claude Code. No token needed; a short read-only agent reads each issue (a few cents).</span></div>` : `<div class="tool-check bad">${icon('alert')}<b>Reading tickets</b><span>not set up: sign in to an Atlassian MCP server below, or add an API token</span></div>`}
+      ${open ? `<p class="muted small">An API token (optional with MCP) makes reading instant and free, and lets Claudestrator post Jira comments. It is kept in ${SECRET_STORE}. Create one at <a data-href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a>.</p>
       <div class="field-row three">
         <label class="field"><span>Site</span><input id="at-site" class="input mono" value="${esc(s.atlassian.site)}" placeholder="acme.atlassian.net"></label>
         <label class="field"><span>Email</span><input id="at-email" class="input" value="${esc(s.atlassian.email)}" placeholder="you@acme.com"></label>
@@ -728,7 +739,7 @@ interface Views {
       </div>
       <div class="row"><button class="btn primary sm" data-action="at-save">${icon('check')}Save</button><button class="btn sm" data-action="at-test" ${s.atlassian.connected ? '' : 'disabled'}>${icon('zap')}Test connection</button>${s.atlassian.hasToken ? `<button class="btn ghost sm danger" data-action="at-forget">Forget token</button>` : ''}</div>
       <label class="field"><span>Allowed Jira projects ${tag(['jira', 'allowedProjects'])}<span class="muted">empty = any</span></span><input class="input mono" data-change="set-list" data-path="jira.allowedProjects" value="${esc(cfg ? cfg.jira.allowedProjects.join(', ') : '')}" placeholder="CP, OPS"></label>
-      ${cfg ? intakeFields(c, cfg.intake) : ''}
+      ${cfg ? intakeFields(c, cfg.intake) : ''}` : ''}
     </section>`;
   }
 
@@ -1028,6 +1039,11 @@ interface Views {
     async enter(route) {
       $('#view')!.innerHTML = `<div class="page mcp-page" data-region="mcp"></div>`;
       this.details = {};
+      // Sent to a card (from a scenario's Ticket node, say): it opens, to show what you came for.
+      if (route.section) {
+        S.ui.integrationsOpen = { ...S.ui.integrationsOpen, [route.section]: true };
+        persist();
+      }
       await this.load();
       if (route.section) $(`#sec-${route.section}`)?.scrollIntoView({ block: 'start' });
     },
@@ -1140,6 +1156,12 @@ interface Views {
         if ((await attempt('setMcpHidden', { name: el.dataset.name, hidden: el.dataset.hidden === '1' })) === undefined) return;
         // The rail's warning and the nav badge count the shown servers only.
         await views.mcp.refresh!();
+      },
+      'integ-fold': (el) => {
+        const key = el.dataset.key ?? '';
+        S.ui.integrationsOpen = { ...S.ui.integrationsOpen, [key]: !integrationOpen(key) };
+        persist();
+        views.mcp.render();
       },
       'mcp-hidden-fold': () => {
         S.ui.mcpHiddenOpen = !S.ui.mcpHiddenOpen;

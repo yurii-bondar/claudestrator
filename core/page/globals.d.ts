@@ -137,6 +137,8 @@ interface UiState {
   treeOpen?: Record<string, boolean>;
   /** Sections whose finished tasks are listed, not folded into one row. */
   treeDone?: Record<string, boolean>;
+  /** The cards of the Integrations page opened by hand, by key (atlassian, bitbucket); the rest are folded. */
+  integrationsOpen?: Record<string, boolean>;
   /** The Integrations page lists the MCP servers you hid. */
   mcpHiddenOpen?: boolean;
   /** What the rail's tree is filtered by. */
