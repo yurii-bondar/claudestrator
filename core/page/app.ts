@@ -224,6 +224,8 @@ interface Views {
   };
 
   /** What a task is for. The composer picks one from your words unless you choose. */
+  /** What the terminal button opens. */
+  const TERMINAL_HINT = 'Claude Code in a terminal, with Claudestrator in context: ask anything about the workspace and its tasks, hand work to any of its agents, or start a scenario as a task';
   const SCENARIO_INFO: Record<string, ScenarioInfo> = {
     deliver: { label: 'Deliver', icon: 'pr', hint: 'Plan → your approval → code and tests per repo → review → draft PRs', placeholder: 'Describe a task in plain words, or paste a Jira key (PROJ-123), an issue (#12, owner/repo#12) or a link to a Jira, GitHub, GitLab or Linear issue or a Confluence page…' },
     readiness: { label: 'Check readiness', icon: 'checklist', hint: 'Finds the work for a ticket and checks every acceptance criterion. Changes nothing.', placeholder: 'Paste a Jira key or an issue link (Jira, GitHub, GitLab, Linear), e.g. “PROJ-123 check it is ready and every acceptance criterion is met”, or describe what should be done…' },
@@ -461,7 +463,10 @@ interface Views {
               <button class="brand" data-action="go-home" data-region="workspace"></button>
               <button class="icon-btn rail-close" data-action="toggle-nav" aria-label="Close the menu" title="Close the menu">${icon('x')}</button>
             </div>
-            <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
+            <div class="rail-new-row">
+              <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
+              <button class="btn rail-terminal" data-action="claude-terminal" aria-label="Claude Code in a terminal" title="${esc(TERMINAL_HINT)}">${icon('terminal')}</button>
+            </div>
             <nav class="nav" data-region="nav" aria-label="Sections"></nav>
             <div class="rail-foot" data-region="rail-foot"></div>
           </aside>
@@ -470,6 +475,7 @@ interface Views {
             <header class="topbar">
               <button class="icon-btn" data-action="toggle-nav" aria-label="Open the menu" aria-controls="rail" aria-expanded="false" title="Menu">${icon('menu')}</button>
               <span class="topbar-title" data-region="topbar-title"></span>
+              <button class="icon-btn" data-action="claude-terminal" aria-label="Claude Code in a terminal" title="${esc(TERMINAL_HINT)}">${icon('terminal')}</button>
               <button class="icon-btn" data-action="new-task" aria-label="New task" title="New task (⌘⌥N)">${icon('plus')}</button>
             </header>
             <div data-region="task-tabs"></div>
@@ -1805,6 +1811,10 @@ interface Views {
     'go-home': () => {
       setNavOpen(false);
       go({ name: 'home' });
+    },
+    'claude-terminal': async () => {
+      setNavOpen(false);
+      if ((await attempt('claudeTerminal')) !== undefined) toast('Claude Code opened in a terminal, with Claudestrator in context', 'ok');
     },
     'new-task': () => {
       setNavOpen(false);

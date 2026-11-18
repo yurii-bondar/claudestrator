@@ -106,6 +106,7 @@ const PARAMS: { [M in keyof Rpc]: Check } = {
   // Only web links leave the editor: never a command: or file: URI.
   openExternal: obj({ url: T.re(/^https?:\/\//i, 'only http(s) links open outside the editor') }),
   copy: obj({ text: T.str() }),
+  claudeTerminal: none,
   preview: composer,
   start: obj({ ...composerShape, 'awake?': awake }),
   setAwake: obj({ taskId: id, awake: nullable(awake) }),

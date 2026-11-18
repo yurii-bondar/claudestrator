@@ -991,6 +991,8 @@ export interface Rpc {
   fixInChat: { params: { taskId: string; model?: string | undefined; effort?: Effort | undefined }; result: Void };
   openExternal: { params: { url: string }; result: Void };
   copy: { params: { text: string }; result: Void };
+  /** Claude Code in a terminal, with Claudestrator in context: its agents as subagents, and the bridge to run tasks. */
+  claudeTerminal: { params: void; result: Void };
   preview: { params: ComposerArgs; result: Preview };
   /** `awake`: the task keeps the computer awake while it runs. */
   start: { params: ComposerArgs & { awake?: AwakeChoice }; result: { taskId: string; created: boolean } };
