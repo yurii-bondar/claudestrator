@@ -200,9 +200,12 @@ test('setup: the tools list GitLab CLI as optional, signed in or how to sign in'
 
 test('integrations: Bitbucket is set up with an email and a token, which the page never shows, and forgotten again', async () => {
   const card = `(document.querySelector('#sec-bitbucket') || {}).innerText?.replace(/\\s+/g, ' ') || ''`;
-  await b.eval(`window.CS.go({ name: 'mcp' }); true`);
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; window.CS.go({ name: 'mcp' }); true`);
   await until(`${card}.includes('Bitbucket Cloud')`, 'the Bitbucket card');
   assert.match(await b.eval(card), /Opening pull requests not set up: needed only for repos on bitbucket\.org/);
+  assert.equal(await b.eval(`!!document.querySelector('#bb-email')`), false, 'folded to its name and status');
+  await b.eval(`document.querySelector('#sec-bitbucket [data-action="integ-fold"]').click(); true`);
+  await until(`!!document.querySelector('#bb-email')`, 'the card open');
   assert.equal(await b.eval(`document.querySelector('[data-action="bb-test"]').disabled`), true, 'nothing to test yet');
 
   await b.eval(`(() => { document.querySelector('#bb-email').value = 'ci@acme.com'; document.querySelector('#bb-token').value = 'bb-ui-secret-123'; document.querySelector('[data-action="bb-save"]').click(); return true; })()`);
@@ -219,6 +222,25 @@ test('integrations: Bitbucket is set up with an email and a token, which the pag
   await until(`!document.querySelector('[data-action="bb-forget"]')`, 'the token forgotten');
   assert.match(await b.eval(card), /Opening pull requests not set up/);
   assert.equal(await b.eval(`document.querySelector('[data-action="bb-test"]').disabled`), true);
+});
+
+test('integrations: Jira & Confluence and Bitbucket are folded to their status until you open one; a link to a card opens it', async () => {
+  const opened = (id) => `document.querySelector('#sec-${id} [data-action="integ-fold"]').getAttribute('aria-expanded') === 'true'`;
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; window.CS.go({ name: 'mcp' }); true`);
+  await until(`!!document.querySelector('#sec-atlassian')`, 'the Jira card');
+  assert.equal(await b.eval(`!!document.querySelector('#at-site') || !!document.querySelector('#bb-email')`), false, 'no fields while folded');
+  assert.match(await b.eval(`document.querySelector('#sec-atlassian').innerText`), /Reading tickets/, 'the status shows folded');
+
+  await b.eval(`document.querySelector('#sec-atlassian [data-action="integ-fold"]').click(); true`);
+  await until(`!!document.querySelector('#at-site')`, 'the Jira card open');
+  assert.equal(await b.eval(opened('bitbucket')), false, 'the other stays folded');
+  assert.deepEqual(await b.eval('window.CS.S.ui.integrationsOpen'), { atlassian: true }, 'kept for the next time');
+  await b.eval(`document.querySelector('#sec-atlassian [data-action="integ-fold"]').click(); true`);
+  await until(`!document.querySelector('#at-site')`, 'the Jira card folded');
+
+  await b.eval(`window.CS.go({ name: 'mcp', section: 'bitbucket' }); true`);
+  await until(`!!document.querySelector('#bb-email')`, 'the card a link names, open');
+  await b.eval(`window.CS.S.ui.integrationsOpen = {}; true`);
 });
 
 test('task list: an issue task gets a chip with its reference that opens the issue', async () => {
