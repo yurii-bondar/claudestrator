@@ -1273,7 +1273,7 @@ interface Views {
         'scenarios',
         `<span class="menu-wrap sc-select">
           <button class="sc-current sc-${info.custom ? 'custom' : sc}" data-action="eff-menu" aria-haspopup="menu" title="${esc(`${info.hint}${auto(sc) ? '\n\nPicked from your words; choose another to change it.' : ''}`)}">${icon(info.icon)}${esc(info.label)}${auto(sc) ? '<span class="sc-auto">auto</span>' : ''}<span class="sc-caret">▾</span></button>
-          <div class="menu sc-menu sc-list" role="menu">${this.scenarioIds()
+          <div class="menu sc-menu sc-names" role="menu">${this.scenarioIds()
             .map((id) => {
               const x = scInfo(id);
               return `<div class="sc-item ${sc === id ? 'current' : ''}">

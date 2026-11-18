@@ -1100,9 +1100,9 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .sc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sc-text b { display: flex; align-items: center; gap: 6px; }
 /* The composer's scenarios: a name each; what one does shows on its ⓘ, below it. */
-.sc-menu.sc-list { width: 280px; }
-.sc-list .sc-pick { align-items: center; }
-.sc-list .sc-pick > .ic { margin-top: 0; }
+.sc-menu.sc-names { width: 280px; }
+.sc-names .sc-pick { align-items: center; }
+.sc-names .sc-pick > .ic { margin-top: 0; }
 .sc-info { position: relative; display: inline-flex; align-items: center; padding: 0 var(--cs-space-2); border-radius: var(--cs-radius-sm); color: var(--cs-text-secondary); cursor: help; }
 .sc-info:hover, .sc-info:focus-visible { color: var(--cs-text-primary); }
 .sc-info:focus-visible { outline: 1px solid var(--cs-border-focus); }
