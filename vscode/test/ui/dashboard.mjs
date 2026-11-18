@@ -241,6 +241,40 @@ test('sync: picked repos pull their default branch, a set of them is kept, and t
   }
 });
 
+test("agents: an agent's MCP servers are named in its card, a name with a space whole; none unticks it to every server", async () => {
+  const mcp = async (name) => (await b.eval(`window.CS.call('config')`)).agents.find((a) => a.name === name);
+  await b.eval(`(async () => { await window.CS.go({ name: 'agents' }); return true; })()`);
+  await until(`!!document.querySelector('[data-action="agent-toggle-open"][data-name="planner"]')`, 'the agents');
+  await b.eval(`document.querySelector('[data-action="agent-toggle-open"][data-name="planner"]').click(); true`);
+  const field = `document.querySelector('[data-field="mcpServers"][data-name="planner"]')`;
+  await until(`!!${field}`, "the planner's servers");
+  const set = (value) => b.eval(`(() => { const f = ${field}; f.value = ${JSON.stringify(value)}; f.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  try {
+    await set(' claude.ai Slack ,Grafana,, ');
+    await until(`(async () => true)()`, 'saved');
+    for (let i = 0; i < 50 && !(await mcp('planner')).mcpServers; i++) await b.sleep(100);
+    assert.deepEqual((await mcp('planner')).mcpServers, ['claude.ai Slack', 'Grafana'], 'split at commas only');
+    await until(`${field} && ${field}.value === 'claude.ai Slack, Grafana'`, 'the field as saved');
+    await set('');
+    for (let i = 0; i < 50 && (await mcp('planner')).mcpServers; i++) await b.sleep(100);
+    assert.equal((await mcp('planner')).mcpServers, undefined, 'empty: every server');
+
+    await b.eval(`document.querySelector('[data-action="agent-toggle-open"][data-name="developer"]').click(); true`);
+    await until(`!!document.querySelector('[data-change="agent-mcp"][data-name="developer"]')`, "the developer's card");
+    assert.equal(await b.eval(`!!document.querySelector('[data-field="mcpServers"][data-name="developer"]')`), false, 'an agent without MCP servers has no list to name');
+  } finally {
+    await b.eval(`window.CS.call('updateAgent', { name: 'planner', patch: { mcpServers: null } })`);
+  }
+});
+
+test('rail: the terminal button opens Claude Code with Claudestrator, and says so', async () => {
+  await b.eval(`(async () => { await window.CS.go({ name: 'home' }); return true; })()`);
+  await until(`!!document.querySelector('.rail-terminal')`, 'the terminal button');
+  assert.match(await b.eval(`document.querySelector('.rail-terminal').title`), /Claude Code in a terminal, with Claudestrator in context/);
+  await b.eval(`document.querySelector('.rail-terminal').click(); true`);
+  await until(`[...document.querySelectorAll('.toast')].some((t) => /Claude Code opened in a terminal, with Claudestrator in context/.test(t.textContent))`, 'the toast');
+});
+
 test("tools: GitLab's CLI shows once installed; with it ready, a missing gh is not a problem", async () => {
   // The Tasks page shows the whole line only when something is wrong: Claude Code here.
   const health = `document.querySelector('[data-region="health"]')`;

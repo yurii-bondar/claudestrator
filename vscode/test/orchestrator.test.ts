@@ -29,6 +29,8 @@ class EventEmitter<T> {
 /** A terminal a test sees opened: its name, what was typed into it. */
 interface FakeTerminal {
   name: string;
+  /** What it was created with: the process it runs, its folder and environment. */
+  options: Record<string, unknown>;
   sent: string[];
   shown: boolean;
 }
@@ -38,8 +40,8 @@ const watcher = { onDidChange() {}, onDidCreate() {}, onDidDelete() {}, dispose(
 const vscodeStub = {
   workspace: { getConfiguration: () => ({ get: (key: string) => setting[key] }), workspaceFolders: [] as { uri: { fsPath: string } }[], createFileSystemWatcher: () => watcher, onDidChangeConfiguration: () => ({ dispose() {} }) },
   window: {
-    createTerminal: ({ name }: { name: string }) => {
-      const t: FakeTerminal & { show(): void; sendText(text: string): void } = { name, sent: [], shown: false, show: () => void (t.shown = true), sendText: (text: string) => void t.sent.push(text) };
+    createTerminal: (options: { name: string }) => {
+      const t: FakeTerminal & { show(): void; sendText(text: string): void } = { name: options.name, options, sent: [], shown: false, show: () => void (t.shown = true), sendText: (text: string) => void t.sent.push(text) };
       terminals.push(t);
       return t;
     },
@@ -286,7 +288,7 @@ test('orchestrator: Install… types the command into a terminal for you to run,
   terminals.length = 0;
   orch.installAwake();
   assert.deepEqual(terminals.map((t) => [t.name, t.sent, t.shown]), [['Install systemd-inhibit', ['sudo apt-get install -y systemd'], true]], 'typed, not run for you: it asks for your password');
-  for (const fn of [...closeListeners]) fn({ name: 'another', sent: [], shown: false });
+  for (const fn of [...closeListeners]) fn({ name: 'another', options: {}, sent: [], shown: false });
   assert.equal(looked, 0, 'another terminal closing changes nothing');
   for (const fn of [...closeListeners]) fn(terminals[0]!);
   assert.equal(looked, 1);
@@ -295,4 +297,75 @@ test('orchestrator: Install… types the command into a terminal for you to run,
   orch.awakeTool = { name: 'caffeinate', path: '/usr/bin/caffeinate', install: null, about: 'caffeinate, built into macOS' };
   assert.throws(() => orch.installAwake(), /nothing to install/);
   orch.dispose();
+});
+
+test('orchestrator: the MCP servers an agent could be denied are the ones the last check listed and the ones the config files name', async () => {
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-names-'));
+  const account = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-names-acct-'));
+  fs.writeFileSync(path.join(account, '.claude.json'), JSON.stringify({ mcpServers: { Grafana: { type: 'http', url: 'http://g' } } }));
+  fs.writeFileSync(path.join(ws, '.mcp.json'), JSON.stringify({ mcpServers: { sentry: { type: 'sse', url: 'https://s' } } }));
+  const orch = Object.assign(Object.create(Orchestrator.prototype) as InstanceType<typeof Orchestrator>, {
+    root: ws,
+    mcp: { servers: [{ name: 'claude.ai Slack', scope: 'claude.ai', state: 'connected' }, { name: 'Grafana', scope: 'user', state: 'connected' }], checking: false, checkedAt: 'now', error: null },
+    agentEnv: () => ({ CLAUDE_CONFIG_DIR: account }),
+  });
+  assert.deepEqual(await orch.mcpServerNames(), ['claude.ai Slack', 'Grafana', 'sentry'], 'each once');
+});
+
+test('orchestrator: Claude Code with Claudestrator opens in the workspace, told of it, with its agents, the bridge and the repos outside it', async () => {
+  const { loadConfig } = require('../../core/src/config') as typeof import('../../core/src/config');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-term-')));
+  const ws = path.join(root, 'ws');
+  fs.mkdirSync(path.join(ws, 'api'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'ext'));
+  fs.mkdirSync(path.join(ws, '.claudestrator'));
+  fs.writeFileSync(path.join(ws, '.claudestrator', 'config.yaml'), 'repos:\n  api: {}\n  ext: { path: ../ext }\n');
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-term-store-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-orch-term-home-'));
+  terminals.length = 0;
+  const orch = Object.assign(Object.create(Orchestrator.prototype) as InstanceType<typeof Orchestrator>, {
+    root: ws,
+    engine: { svc: { list: async () => [] } },
+    context: { globalStorageUri: { fsPath: storage } },
+    mcp: { servers: [{ name: 'Grafana', scope: 'user', state: 'connected' }], checking: false, checkedAt: 'now', error: null },
+    ensureReady: async () => {},
+    config: async () => loadConfig({ workspace: ws, home }),
+    agentEnv: () => ({ CLAUDE_CONFIG_DIR: home }),
+    claudeCommand: () => '/opt/bin/claude',
+    accountChoice: () => ({ dir: '/home/me/.claude-work' }),
+  });
+  try {
+    await orch.openClaudeTerminal();
+    const [t] = terminals;
+    assert.equal(t!.name, 'Claude · Claudestrator');
+    assert.equal(t!.shown, true);
+    const o = t!.options as { shellPath: string; shellArgs: string[]; cwd: string; env: Record<string, unknown> };
+    assert.equal(o.shellPath, '/opt/bin/claude', 'Claude itself, no shell');
+    assert.equal(o.cwd, ws);
+    assert.equal(o.env.CLAUDE_CONFIG_DIR, '/home/me/.claude-work', "the agents' account");
+    const arg = (flag: string) => o.shellArgs[o.shellArgs.indexOf(flag) + 1]!;
+    assert.match(arg('--append-system-prompt'), /^# Claudestrator/);
+    assert.ok(arg('--append-system-prompt').includes(`- api: ${path.join(ws, 'api')}`));
+    const agents = JSON.parse(arg('--agents')) as Record<string, { tools?: string[] }>;
+    assert.ok(agents.planner!.tools!.includes('mcp__Grafana'), 'the servers the account has, named for each agent that may use them');
+    assert.deepEqual(o.shellArgs.slice(o.shellArgs.indexOf('--add-dir') + 1), [path.join(root, 'ext')], 'only the repo outside the workspace');
+
+    const file = arg('--mcp-config');
+    assert.equal(file, orch.terminalMcpFile());
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'the token is only yours to read');
+    assert.ok(orch.secretFiles().includes(file), 'and no agent reads it');
+    const server = (JSON.parse(fs.readFileSync(file, 'utf8')) as { mcpServers: { claudestrator: { url: string; headers: { Authorization: string } } } }).mcpServers.claudestrator;
+    assert.equal(server.url, orch.bridge!.url);
+    const tools = await fetch(server.url, { method: 'POST', headers: { Authorization: server.headers.Authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    assert.equal(tools.status, 200, 'the bridge answers the session with that token');
+
+    await orch.openClaudeTerminal();
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.claudestrator.url, server.url, 'a second terminal reaches the same bridge');
+
+    fs.writeFileSync(path.join(ws, '.claudestrator', 'config.yaml'), 'repos: [oops]\n');
+    await assert.rejects(() => orch.openClaudeTerminal(), /The config has errors/);
+    assert.equal(terminals.length, 2);
+  } finally {
+    if (orch.bridge) orch.bridge.dispose();
+  }
 });
