@@ -275,6 +275,82 @@ test('rail: the terminal button opens Claude Code with Claudestrator, and says s
   await until(`[...document.querySelectorAll('.toast')].some((t) => /Claude Code opened in a terminal, with Claudestrator in context/.test(t.textContent))`, 'the toast');
 });
 
+test("plan approval: the plan's questions are answered with the mouse and the keyboard, and the answers go to the planner", async () => {
+  const QUESTIONS = [
+    { question: 'Exact match or a /24 network?', default: 'exact match', options: ['a /24 network', 'a /16 network'], followUp: 'A back-office setting per operator' },
+    { question: 'Log the mismatch?', default: 'yes, as a metric' },
+  ];
+  /** Clicks the middle of what `sel` finds, with the mouse, as a person would. */
+  const mouse = async (sel) => {
+    const at = await b.eval(`(() => { const el = ${sel}; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    await b.sleep(100);
+  };
+  const taskId = await b.eval(`(async () => (await window.CS.call('start', { text: 'Bind the session to the player IP' })).taskId)()`);
+  const waitingAt = async (id) => {
+    for (let i = 0; i < 200; i++) {
+      const d = await b.eval(`window.CS.call('task', { taskId: ${JSON.stringify(taskId)} })`);
+      if (d.checkpointFull && d.checkpointFull.id === id && d.status.key !== 'running') return d;
+      await b.sleep(100);
+    }
+    throw new Error(`timed out waiting for ${id}`);
+  };
+  await waitingAt('approve-plan');
+  // The fake planner asks nothing: the screen is told of these questions, as a planner would ask them.
+  await b.eval(`(() => {
+    window.__questions = (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && d.taskId === ${JSON.stringify(taskId)} && d.plan && !d.answers.length) d.plan.openQuestions = ${JSON.stringify(QUESTIONS)}; };
+    window.addEventListener('message', window.__questions, true);
+    return true;
+  })()`);
+  const checkpoint = `document.querySelector('[data-region="task-checkpoint"]')`;
+  const checked = (q) => b.eval(`(document.querySelector('[name="q-${q}"]:checked') || {}).value`);
+  const buttons = () => b.eval(`[...${checkpoint}.querySelectorAll('[data-action="answer"]')].map((x) => x.dataset.option + (x.classList.contains('primary') ? '*' : ''))`);
+  try {
+    await b.eval(`window.CS.go({ name: 'task', taskId: ${JSON.stringify(taskId)} }); true`);
+    await until(`!!document.querySelector('.q-choice')`, 'the questions');
+    assert.equal(await checked(0), 'default', "the planner's answer, picked");
+    assert.equal(await checked(1), 'default');
+    assert.ok((await buttons()).includes('approve*'), 'approving goes with them');
+
+    await mouse(`[...document.querySelectorAll('[name="q-0"]')].find((r) => r.value === 'o1').closest('label')`);
+    assert.equal(await checked(0), 'o1', 'a click on the answer picks it');
+    assert.deepEqual((await buttons()).filter((o) => o.startsWith('approve')), [], 'not approved past it');
+    assert.ok((await buttons()).includes('change*'));
+    assert.match(await textOf(`${checkpoint}.querySelector('[data-option="change"]')`), /Revise the plan with your answers/);
+
+    // Typing an answer of your own picks it, and the field keeps what is typed while the question is drawn again.
+    await mouse(`document.querySelector('#q-own-1')`);
+    await b.send('Input.insertText', { text: 'тільки рядок у лог' });
+    await b.sleep(100);
+    assert.equal(await checked(1), 'own');
+    assert.equal(await b.eval(`document.querySelector('#q-own-1').value`), 'тільки рядок у лог');
+    assert.equal(await b.eval(`document.activeElement && document.activeElement.id`), 'q-own-1', 'still typing there');
+
+    await mouse(`${checkpoint}.querySelector('[data-action="answer"][data-option="change"]')`);
+    const d = await waitingAt('approve-plan');
+    const answer = d.answers[d.answers.length - 1];
+    assert.equal(answer.option, 'change');
+    assert.equal(answer.feedback, 'My answers to the open questions of the plan:\n1. Exact match or a /24 network?\n   → a /16 network (my pick)\n2. Log the mismatch?\n   → тільки рядок у лог (in my words)');
+  } finally {
+    await b.eval(`(() => { window.removeEventListener('message', window.__questions, true); return true; })()`);
+  }
+
+  // A plan asked again: New task starts the work an answer leaves out, from where it came.
+  await b.eval(`(() => { window.__questions = (e) => { const d = e.data && e.data.data; if (e.data && e.data.type === 'res' && d && d.taskId === ${JSON.stringify(taskId)} && d.plan) d.plan.openQuestions = ${JSON.stringify(QUESTIONS)}; }; window.addEventListener('message', window.__questions, true); return true; })()`);
+  try {
+    await b.eval(`(async () => { await window.CS.go({ name: 'home' }); await window.CS.go({ name: 'task', taskId: ${JSON.stringify(taskId)} }); return true; })()`);
+    await until(`!!document.querySelector('[data-action="q-new-task"]')`, 'New task');
+    assert.equal(await checked(0), 'default', 'a new plan asks anew');
+    await mouse(`document.querySelector('[data-action="q-new-task"][data-q="0"]')`);
+    await until(`!!document.querySelector('#composer-text') && document.querySelector('#composer-text').value.length > 0`, 'the composer, filled');
+    assert.match(await b.eval(`document.querySelector('#composer-text').value`), /^A back-office setting per operator\n\nLeft out of .+ by its plan\.\nThe question there: Exact match or a \/24 network\?\nIts answer: exact match$/);
+  } finally {
+    await b.eval(`(async () => { window.removeEventListener('message', window.__questions, true); window.CS.S.draft.text = ''; await window.CS.call('stop', { taskId: ${JSON.stringify(taskId)} }); await window.CS.call('deleteTask', { taskId: ${JSON.stringify(taskId)} }).catch(() => {}); return true; })()`);
+  }
+});
+
 test("tools: GitLab's CLI shows once installed; with it ready, a missing gh is not a problem", async () => {
   // The Tasks page shows the whole line only when something is wrong: Claude Code here.
   const health = `document.querySelector('[data-region="health"]')`;
