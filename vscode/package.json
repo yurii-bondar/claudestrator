@@ -153,6 +153,12 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "claudestrator.claudeTerminal",
+        "title": "Open Claude Code with Claudestrator",
+        "category": "Claudestrator",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "claudestrator.newTask",
         "title": "New Task…",
         "category": "Claudestrator",

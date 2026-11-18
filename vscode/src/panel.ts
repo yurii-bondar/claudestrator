@@ -588,6 +588,10 @@ class DashboardPanel implements RpcHandlers {
     terminal.show();
   }
 
+  async $claudeTerminal() {
+    await this.orch.openClaudeTerminal();
+  }
+
   async $openExternal({ url }: { url: string }) {
     if (!view.isWebLink(url)) throw new Error('not a web link');
     await vscode.env.openExternal(vscode.Uri.parse(url));
