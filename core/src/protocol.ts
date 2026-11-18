@@ -291,6 +291,7 @@ const CONFIG_LAYER = T.obj({
   'context?': T.arr(T.str(1)),
   'groups?': T.rec(entryId, GROUP),
   'instructions?': T.rec(entryId, INSTRUCTION),
+  'repoSets?': T.rec(T.re(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/, 'a name of up to 40 letters, digits, spaces, ".", "_" and "-"'), T.arr(T.re(REPO_NAME, 'a repo name'), 1)),
 });
 
 const validateConfigLayer = (v: unknown): string[] => CONFIG_LAYER(v ?? {}, '');

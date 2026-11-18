@@ -502,7 +502,7 @@ interface Views {
     const o = S.overview;
     const attention = o ? o.tasks.filter((t) => t.status.group === 'attention').length : 0;
     const running = o ? o.tasks.filter((t) => t.status.group === 'running').length : 0;
-    const active = S.route.name === 'task' ? 'home' : S.route.name === 'scenario-diagram' ? 'scenarios' : S.route.name;
+    const active = S.route.name === 'task' ? 'home' : S.route.name === 'scenario-diagram' ? 'scenarios' : S.route.name === 'sync' ? 'repos' : S.route.name;
     /** A section's item; `action` replaces the link to the section (then it is never the current page). */
     const item = (n: (typeof NAV)[number], action?: string) => {
       let badge = '';
@@ -511,7 +511,7 @@ interface Views {
         const bad = o.mcp.problems;
         badge = bad ? `<span class="nb err" title="${plural(bad, 'server')} with a problem">${bad}</span>` : o.mcp.connected === o.mcp.total ? '<span class="mcp-dot s-connected" title="All connected"></span>' : '<span class="mcp-dot s-installed" title="Not checked yet"></span>';
       }
-      const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram'));
+      const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram') || (n.name === 'repos' && S.route.name === 'sync'));
       return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''}>${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
     };
     // Tasks is the root of the tree, an item like the others: a click opens or folds the tasks under it (the logo opens

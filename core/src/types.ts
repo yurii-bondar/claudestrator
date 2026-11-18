@@ -375,6 +375,8 @@ export interface Config {
   git: { mode: GitMode };
   groups: Record<string, TaskGroup>;
   instructions: Record<string, TaskInstruction>;
+  /** Lists of repos kept under a name (Repos & checks → Sync), of the repos the config has. */
+  repoSets: Record<string, string[]>;
   /** Every file the config is read from: config and library files (also where none is yet), instruction and context files. */
   sources: string[];
 }

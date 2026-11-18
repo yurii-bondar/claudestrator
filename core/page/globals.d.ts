@@ -63,6 +63,10 @@ type FeedEvent = import('../src/wire').FeedEvent;
 type PipelineEdit = import('../src/wire').PipelineEdit;
 type CheckpointContext = import('../src/wire').CheckpointContext;
 type ReviewItemView = import('../src/wire').ReviewItemView;
+type SyncRun = import('../src/wire').SyncRun;
+type RepoSync = import('../src/wire').RepoSync;
+type MergedBranch = import('../src/wire').MergedBranch;
+type Deleted = import('../src/wire').Deleted;
 
 // ---------- requests ----------
 
@@ -139,6 +143,10 @@ interface UiState {
   treeDone?: Record<string, boolean>;
   /** The cards of the Integrations page opened by hand, by key (atlassian, bitbucket); the rest are folded. */
   integrationsOpen?: Record<string, boolean>;
+  /** The repos Sync picked last. */
+  syncRepos?: string[];
+  /** The merged branches of the last sync unticked, by id. */
+  syncSkip?: string[];
   /** The Integrations page lists the MCP servers you hid. */
   mcpHiddenOpen?: boolean;
   /** What the rail's tree is filtered by. */

@@ -852,7 +852,70 @@ export interface ReposData {
   detected: FoundRepo[];
   context: ContextFile[];
   baseBranch: string;
+  /** Lists of repos kept under a name, for syncing them together. */
+  repoSets: Record<string, string[]>;
 }
+
+/** A sync of repos: what each one's pull did, and its merged branches; `runId` names it for the deletion that follows. */
+export interface SyncRun {
+  runId: string;
+  repos: RepoSync[];
+}
+
+// ---------- sync repos ----------
+
+/** What pulling the default branch did in a repo. */
+export type PullOutcome =
+  | { kind: 'updated'; branch: string; from: string; to: string }
+  | { kind: 'up-to-date'; branch: string }
+  /** origin's default branch merged into the feature branch checked out. */
+  | { kind: 'merged'; branch: string; from: string; to: string }
+  /** The merge stopped on conflicts, left in progress for them to be resolved. */
+  | { kind: 'conflict'; branch: string; base: string; files: string[] }
+  | { kind: 'skipped'; branch: string; reason: string }
+  | { kind: 'failed'; branch: string; reason: string };
+
+/** A branch the run may delete. */
+export interface MergedBranch {
+  /** `<repo>:<local|origin>:<branch>`: what the page sends back to delete it. */
+  id: string;
+  repo: string;
+  scope: 'local' | 'origin';
+  branch: string;
+  /** A local branch's tip: `git branch <name> <tip>` brings it back. */
+  tip?: string;
+  /** The linked worktree that holds it and goes with it. */
+  worktree?: string;
+  /** It is checked out in the repo: the repo switches to this branch first. */
+  switchTo?: string;
+}
+
+/** A merged branch that is kept, and why. */
+export interface KeptBranch {
+  repo: string;
+  branch: string;
+  reason: string;
+}
+
+export interface RepoSync {
+  repo: string;
+  dir: string;
+  base: string | null;
+  pull: PullOutcome;
+  /** A fetch that failed: the run went on with the refs already there. */
+  warning?: string;
+  merged: MergedBranch[];
+  kept: KeptBranch[];
+}
+
+/** What deleting one branch came to. */
+export interface Deleted {
+  id: string;
+  ok: boolean;
+  /** What was done on the way (a switch, a worktree removed), or why it failed. */
+  note?: string;
+}
+
 
 /** One gate's outcome. */
 export interface GateResult {
@@ -991,6 +1054,12 @@ export interface Rpc {
   fixInChat: { params: { taskId: string; model?: string | undefined; effort?: Effort | undefined }; result: Void };
   openExternal: { params: { url: string }; result: Void };
   copy: { params: { text: string }; result: Void };
+  /** Pulls origin's default branch into each repo and finds its merged branches. */
+  syncRepos: { params: { repos: string[] }; result: SyncRun };
+  /** Deletes the chosen merged branches of a sync, by their ids. */
+  syncDelete: { params: { runId: string; ids: string[] }; result: Deleted[] };
+  /** Claude Code in a terminal, in a repo whose merge of the default branch stopped on conflicts. */
+  syncResolve: { params: { runId: string; repo: string }; result: Void };
   /** Claude Code in a terminal, with Claudestrator in context: its agents as subagents, and the bridge to run tasks. */
   claudeTerminal: { params: void; result: Void };
   preview: { params: ComposerArgs; result: Preview };

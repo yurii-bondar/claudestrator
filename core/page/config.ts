@@ -61,11 +61,28 @@ interface McpView extends View {
   agentsMenu(server: string): string;
 }
 
+/** Repos & checks → Sync: pull the default branch into the picked repos, then delete the branches it already holds. */
+interface SyncView extends View {
+  r: ReposData | null;
+  run: SyncRun | null;
+  /** What became of each branch a deletion was asked for, by its id. */
+  deleted: Record<string, Deleted>;
+  running: boolean;
+  /** The delete button asked once: the second press deletes. */
+  confirming: boolean;
+  load(): Promise<void>;
+  picked(): string[];
+  pick(names: string[]): void;
+  render(): void;
+  results(run: SyncRun): string;
+}
+
 // Merges into `Views` of globals.d.ts, which is where the shell reads these screens.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface Views {
   agents: AgentsView;
   repos: ReposView;
+  sync: SyncView;
   settings: SettingsView;
   mcp: McpView;
 }
@@ -493,7 +510,7 @@ interface Views {
         'repos',
         `<div class="page-head"><div><h1>${icon('repo')}Repos & checks</h1>
           <p class="lead">The repositories agents may change, and the checks (gates) that must pass after an agent touches one. A red check goes back to the agent with its output, up to the attempt limit in Settings.</p></div>
-          <div class="row"><button class="btn" data-action="open-config">${icon('edit')}config.yaml</button><button class="btn primary" data-action="repo-pick">${icon('folder')}Add repository…</button></div></div>
+          <div class="row"><button class="btn" data-action="open-config">${icon('edit')}config.yaml</button><button class="btn" data-action="nav" data-name="sync" title="Pull the default branch into the repos you pick, then delete the branches it already holds">${icon('refresh')}Sync repos…</button><button class="btn primary" data-action="repo-pick">${icon('folder')}Add repository…</button></div></div>
         ${this.picked ? pickedCard(this.picked) : ''}
         ${r.repos.length ? `<section class="card repo-table"><div class="rt-row rt-head" aria-hidden="true"><span>Repository</span><span>Checkout</span><span>Base</span><span>Checks</span><span></span></div>${r.repos.map((x) => this.repoRow(x)).join('')}</section>` : this.picked ? '' : `<div class="banner info">${icon('info')}<div class="grow">No repos configured yet. Without them, agents work in folders named by the plan, with no checks.</div><div class="banner-actions"><button class="btn sm primary" data-action="repo-pick">${icon('folder')}Add repository…</button></div></div>`}
         ${r.detected.length ? `<section class="card detected"><h3>${icon('search')}Found in this workspace</h3>${r.detected.map((d, i) => `<label class="det-row"><input type="checkbox" class="det-check" data-i="${i}" checked><b>${esc(d.name)}</b><span class="muted mono small">${esc(d.path)}</span>${d.stack.map((s) => `<span class="chip small">${esc(s)}</span>`).join('')}<span class="muted small">${d.gates.length ? d.gates.map((g) => esc(g.name)).join(', ') : 'no checks found'}</span></label>`).join('')}<div class="row end"><button class="btn primary sm" data-action="repo-add-detected">${icon('plus')}Add selected</button></div></section>` : ''}
@@ -1235,6 +1252,189 @@ interface Views {
         const text = await attempt('mcpDetails', { name });
         v.details[name] = text || '(no details)';
         v.render();
+      },
+    },
+  };
+
+  // ---------- sync repos ----------
+
+  /** What a repo's pull came to, in a line. */
+  function pullLine(p: RepoSync['pull']): { tone: string; icon: string; text: string } {
+    switch (p.kind) {
+      case 'updated':
+        return { tone: 'ok', icon: 'check', text: `${p.branch} updated ${p.from}..${p.to}` };
+      case 'up-to-date':
+        return { tone: 'ok', icon: 'check', text: `${p.branch} is up to date` };
+      case 'merged':
+        return { tone: 'ok', icon: 'check', text: `the default branch merged into ${p.branch} (${p.from}..${p.to})` };
+      case 'conflict':
+        return { tone: 'error', icon: 'alert', text: `merging origin/${p.base} into ${p.branch} stopped on conflicts in ${plural(p.files.length, 'file')}: ${p.files.slice(0, 4).join(', ')}${p.files.length > 4 ? ', …' : ''}` };
+      case 'skipped':
+        return { tone: 'warn', icon: 'info', text: `${p.branch ? `${p.branch}: ` : ''}not pulled: ${p.reason}` };
+      case 'failed':
+        return { tone: 'error', icon: 'alert', text: `${p.branch ? `${p.branch}: ` : ''}${p.reason}` };
+    }
+  }
+
+  views.sync = {
+    r: null,
+    run: null,
+    deleted: {},
+    running: false,
+    confirming: false,
+    async enter() {
+      $('#view')!.innerHTML = `<div class="page sync-page" data-region="sync"></div>`;
+      this.run = null;
+      this.deleted = {};
+      this.confirming = false;
+      await this.load();
+    },
+    async load() {
+      this.r = await call('repos');
+      this.render();
+    },
+    onConfig() {
+      if (!this.running) this.load();
+    },
+    /** The repos ticked: the ones picked last time that the config still has, or every one. */
+    picked() {
+      const names = (this.r && this.r.ok ? this.r.repos : []).map((x) => x.name);
+      const kept = (Array.isArray(S.ui.syncRepos) ? S.ui.syncRepos : names).filter((n): n is string => typeof n === 'string' && names.includes(n));
+      return kept;
+    },
+    pick(names) {
+      S.ui.syncRepos = names;
+      persist();
+      this.render();
+    },
+    render() {
+      const r = this.r;
+      if (!r) return;
+      if (!r.ok) return void patch('sync', `<h1>${icon('refresh')}Sync repos</h1><div class="banner error">${icon('alert')}<div class="grow">${r.errors.map(esc).join('<br>')}</div></div>`);
+      const picked = this.picked();
+      const sets = Object.entries(r.repoSets);
+      const same = (list: string[]) => list.length === picked.length && list.every((n) => picked.includes(n));
+      const repoBox = (x: RepoView) => `<label class="sync-repo"><input type="checkbox" data-change="sync-pick" data-name="${esc(x.name)}" ${picked.includes(x.name) ? 'checked' : ''}><b>${esc(x.name)}</b>${x.status && x.status.branch ? `<span class="chip small">${icon('branch')}${esc(x.status.branch)}</span>` : ''}${x.status && x.status.dirty ? `<span class="badge tone-warn">${plural(x.status.dirty, 'change')}</span>` : ''}</label>`;
+      const setChip = ([name, list]: [string, string[]]) => `<span class="sync-set ${same(list) ? 'on' : ''}"><button class="chip" data-action="sync-set" data-name="${esc(name)}" title="${esc(list.join(', '))}">${esc(name)} <span class="muted">${list.length}</span></button><button class="icon-btn xs" data-action="sync-set-delete" data-name="${esc(name)}" aria-label="${esc(`Forget the set ${name}`)}" title="Forget this set">${icon('x')}</button></span>`;
+      patch(
+        'sync',
+        `<div class="page-head"><div><h1>${icon('refresh')}Sync repos</h1>
+          <p class="lead">Pulls origin's default branch into each repo: on the default branch a fast-forward, on a feature branch a merge, and a merge that stops on conflicts goes to Claude Code. Then it lists the branches the default branch already holds, here and on origin, for you to delete.</p></div>
+          <div class="row"><button class="btn" data-action="nav" data-name="repos">${icon('repo')}Repos & checks</button></div></div>
+        <section class="card sync-pick">
+          ${sets.length ? `<div class="sync-sets"><span class="muted small">Sets</span>${sets.map(setChip).join('')}</div>` : ''}
+          <div class="sync-repos">${r.repos.map(repoBox).join('') || '<span class="muted">No repos configured yet: add them in Repos & checks.</span>'}</div>
+          <div class="row sync-actions">
+            <button class="btn ghost sm" data-action="sync-all">All</button><button class="btn ghost sm" data-action="sync-none">None</button>
+            <span class="grow"></span>
+            <input class="input sm sync-set-name" id="sync-set-name" placeholder="Name this set, e.g. Backend" maxlength="40">
+            <button class="btn sm" data-action="sync-set-save" ${picked.length ? '' : 'disabled'}>${icon('check')}Save set</button>
+            <button class="btn primary" data-action="sync-run" ${picked.length && !this.running ? '' : 'disabled'}>${this.running ? '<span class="spinner xs"></span> Syncing…' : `${icon('refresh')}Pull & find merged branches`}</button>
+          </div>
+        </section>
+        ${this.run ? this.results(this.run) : ''}`
+      );
+    },
+    results(run) {
+      const offered = run.repos.flatMap((x) => x.merged);
+      const skipped = S.ui.syncSkip || [];
+      const branchRow = (b: MergedBranch) => {
+        const done = this.deleted[b.id];
+        const what = b.scope === 'origin' ? `<span class="chip small">origin</span>` : `<span class="chip small">local</span>`;
+        const note = b.switchTo ? `checked out: switches to ${b.switchTo} first` : b.worktree ? `removes its worktree ${b.worktree}` : b.tip ? `at ${b.tip}` : '';
+        if (done) return `<div class="sync-branch ${done.ok ? 'gone' : 'failed'}">${icon(done.ok ? 'check' : 'alert')}${what}<code>${esc(b.branch)}</code><span class="muted small">${esc(done.ok ? done.note || 'deleted' : done.note || 'not deleted')}</span></div>`;
+        return `<label class="sync-branch"><input type="checkbox" class="sync-del" data-change="sync-skip" data-id="${esc(b.id)}" ${skipped.includes(b.id) ? '' : 'checked'}>${what}<code>${esc(b.branch)}</code><span class="muted small">${esc(note)}</span></label>`;
+      };
+      const repoCard = (x: RepoSync) => {
+        const p = pullLine(x.pull);
+        return `<section class="card sync-result">
+          <div class="row"><b class="sync-repo-name">${icon('repo')}${esc(x.repo)}</b><span class="tone-${p.tone} sync-pull">${icon(p.icon)}${esc(p.text)}</span><span class="grow"></span>${x.pull.kind === 'conflict' ? `<button class="btn sm primary" data-action="sync-resolve" data-repo="${esc(x.repo)}" title="Claude Code in a terminal, in this repo, to resolve the conflicts and conclude the merge. Nothing is pushed.">${icon('sparkles')}Resolve with Claude</button>` : ''}</div>
+          ${x.warning ? `<div class="muted small sync-warn">${icon('info')}<span>${esc(x.warning)}</span></div>` : ''}
+          ${x.merged.length ? `<div class="sync-branches">${x.merged.map(branchRow).join('')}</div>` : x.pull.kind === 'conflict' ? '<div class="muted small">Its merged branches are looked for once the merge is concluded: sync again then.</div>' : x.base ? '<div class="muted small">No merged branches.</div>' : ''}
+          ${x.kept.length ? `<details class="sync-kept"><summary class="muted small">${plural(x.kept.length, 'merged branch', 'merged branches')} kept</summary>${x.kept.map((k) => `<div class="small"><code>${esc(k.branch)}</code> <span class="muted">${esc(k.reason)}</span></div>`).join('')}</details>` : ''}
+        </section>`;
+      };
+      const pending = offered.filter((b) => !this.deleted[b.id]);
+      const onOrigin = pending.filter((b) => b.scope === 'origin').length;
+      const foot = pending.length
+        ? `<div class="row sync-foot">${this.confirming ? `<span class="tone-error small">${icon('alert')}Deletes the ticked branches${onOrigin ? `, ${onOrigin} of them on origin, for everyone` : ''}. A local one comes back with <code>git branch &lt;name&gt; &lt;tip&gt;</code>.</span><span class="grow"></span><button class="btn ghost" data-action="sync-cancel">Cancel</button><button class="btn danger" data-action="sync-delete">${icon('x')}Delete them</button>` : `<span class="muted small">Untick what should stay.</span><span class="grow"></span><button class="btn warn" data-action="sync-confirm">${icon('x')}Delete the ticked branches…</button>`}</div>`
+        : '';
+      return `<h3 class="section-title">Results</h3>${run.repos.map(repoCard).join('')}${foot}`;
+    },
+    actions: {
+      'sync-all': () => views.sync.pick((views.sync.r && views.sync.r.ok ? views.sync.r.repos : []).map((x) => x.name)),
+      'sync-none': () => views.sync.pick([]),
+      'sync-set': (el) => {
+        const list = views.sync.r ? views.sync.r.repoSets[el.dataset.name ?? ''] : undefined;
+        if (list) views.sync.pick([...list]);
+      },
+      'sync-set-save': async () => {
+        const name = ($<HTMLInputElement>('#sync-set-name')?.value || '').trim();
+        if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(name)) return toast('Name the set: letters, digits, spaces, ".", "_" or "-", up to 40', 'warn');
+        if (await attempt('setValue', { keyPath: ['repoSets', name], value: views.sync.picked() }, `Saved the set ${name}`)) await views.sync.load();
+      },
+      'sync-set-delete': async (el) => {
+        const name = el.dataset.name ?? '';
+        if (await attempt('setValue', { keyPath: ['repoSets', name], value: undefined }, `Forgot the set ${name}`)) await views.sync.load();
+      },
+      'sync-run': async () => {
+        const v = views.sync;
+        const repos = v.picked();
+        if (!repos.length || v.running) return;
+        v.running = true;
+        v.confirming = false;
+        v.render();
+        const run = await attempt('syncRepos', { repos });
+        v.running = false;
+        if (run) {
+          v.run = run;
+          v.deleted = {};
+          S.ui.syncSkip = [];
+          persist();
+        }
+        await v.load();
+      },
+      'sync-confirm': () => {
+        views.sync.confirming = true;
+        views.sync.render();
+      },
+      'sync-cancel': () => {
+        views.sync.confirming = false;
+        views.sync.render();
+      },
+      'sync-delete': async (el) => {
+        const v = views.sync;
+        if (!v.run) return;
+        const ids = $$<HTMLInputElement>('.sync-del').filter((c) => c.checked).map((c) => c.dataset.id ?? '').filter(Boolean);
+        if (!ids.length) return toast('Nothing is ticked', 'warn');
+        el.setAttribute('disabled', '');
+        const done = await attempt('syncDelete', { runId: v.run.runId, ids });
+        v.confirming = false;
+        if (done) {
+          for (const d of done) v.deleted[d.id] = d;
+          const failed = done.filter((d) => !d.ok).length;
+          toast(failed ? `${plural(done.length - failed, 'branch', 'branches')} deleted, ${failed} not: see why under each` : `${plural(done.length, 'branch', 'branches')} deleted`, failed ? 'warn' : 'ok');
+        }
+        await v.load();
+      },
+      'sync-resolve': async (el) => {
+        const v = views.sync;
+        if (v.run && (await attempt('syncResolve', { runId: v.run.runId, repo: el.dataset.repo ?? '' })) !== undefined) toast('Claude Code opened in a terminal in that repo. Sync again once the merge is concluded.', 'ok');
+      },
+    },
+    changes: {
+      // An untick stays through the page being drawn again.
+      'sync-skip': (el) => {
+        const id = el.dataset.id ?? '';
+        const now = (S.ui.syncSkip || []).filter((x) => x !== id);
+        S.ui.syncSkip = el.checked ? now : [...now, id];
+        persist();
+      },
+      'sync-pick': (el) => {
+        const v = views.sync;
+        const name = el.dataset.name ?? '';
+        const now = v.picked().filter((n) => n !== name);
+        v.pick(el.checked ? [...now, name] : now);
       },
     },
   };

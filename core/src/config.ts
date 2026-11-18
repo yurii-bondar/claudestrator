@@ -82,6 +82,8 @@ interface ConfigLayer {
   context?: string[];
   groups?: Record<string, GroupLayer>;
   instructions?: Record<string, InstructionLayer>;
+  /** Lists of repos kept under a name, for syncing them together. */
+  repoSets?: Record<string, string[]>;
 }
 
 interface Layer {
@@ -128,6 +130,7 @@ interface Merged {
   scenarios: Record<string, ScenarioEntry>;
   groups: Record<string, GroupLayer>;
   instructions: Record<string, InstructionLayer>;
+  repoSets: Record<string, string[]>;
   origins: Record<string, unknown>;
   pipeline?: { names: string[]; source: string };
   language?: string;
@@ -610,7 +613,7 @@ function toOp(layer: Layer, input: InstructionsInput | undefined): InstructionOp
 }
 
 function mergeLayers(layers: Layer[]): Merged {
-  const merged: Merged = { agents: new Map(), limits: {}, repos: new Map(), jira: {}, policy: {}, scenarios: {}, groups: {}, instructions: {}, origins: {}, intake: {} };
+  const merged: Merged = { agents: new Map(), limits: {}, repos: new Map(), jira: {}, policy: {}, scenarios: {}, groups: {}, instructions: {}, repoSets: {}, origins: {}, intake: {} };
   for (const layer of layers) {
     const c = layer.config;
     for (const [name, agent] of Object.entries(c.agents ?? {})) {
@@ -626,6 +629,7 @@ function mergeLayers(layers: Layer[]): Merged {
     // Groups and instructions too: a later layer replaces the whole entry.
     Object.assign(merged.groups, clone(c.groups ?? {}));
     Object.assign(merged.instructions, clone(c.instructions ?? {}));
+    Object.assign(merged.repoSets, clone(c.repoSets ?? {}));
     if (c.limits) merged.limits = { ...merged.limits, ...defined(c.limits) };
     if (c.language) merged.language = c.language;
     if (c.baseBranch) merged.baseBranch = c.baseBranch;
@@ -799,6 +803,8 @@ function resolveConfig(layers: Layer[], opts: { flags?: Flags | undefined; readF
       git: { mode: merged.gitMode ?? 'branch' },
       groups,
       instructions: Object.fromEntries(Object.entries(merged.instructions).map(([id, x]) => [id, { id, label: x.label, text: x.text }])),
+      // A set keeps the repos the config still has: one removed since drops out of it.
+      repoSets: Object.fromEntries(Object.entries(merged.repoSets).map(([name, list]) => [name, list.filter((r) => repos[r])])),
       sources: [...sources],
     },
   };
