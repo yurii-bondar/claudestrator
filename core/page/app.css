@@ -1099,6 +1099,15 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .sc-item.current .sc-pick > .ic { color: var(--cs-border-focus); }
 .sc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sc-text b { display: flex; align-items: center; gap: 6px; }
+/* The composer's scenarios: a name each; what one does shows on its ⓘ, below it. */
+.sc-menu.sc-list { width: 280px; }
+.sc-list .sc-pick { align-items: center; }
+.sc-list .sc-pick > .ic { margin-top: 0; }
+.sc-info { position: relative; display: inline-flex; align-items: center; padding: 0 var(--cs-space-2); border-radius: var(--cs-radius-sm); color: var(--cs-text-secondary); cursor: help; }
+.sc-info:hover, .sc-info:focus-visible { color: var(--cs-text-primary); }
+.sc-info:focus-visible { outline: 1px solid var(--cs-border-focus); }
+.sc-tip { display: none; position: absolute; top: calc(100% + 2px); right: 0; z-index: var(--cs-z-menu); width: 260px; max-width: calc(100vw - 40px); padding: var(--cs-space-2) var(--cs-space-3); background: var(--cs-menu-bg); color: var(--cs-text-primary); border: 1px solid var(--cs-border-strong); border-radius: var(--cs-radius-md); box-shadow: var(--cs-shadow); font-size: var(--cs-font-sm); font-weight: var(--cs-weight-regular); line-height: 1.45; white-space: normal; cursor: auto; }
+.sc-info:hover .sc-tip, .sc-info:focus .sc-tip { display: block; }
 .sc-editor { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--cs-radius-lg); border: 1px dashed var(--cs-border-strong); background: var(--cs-bg-app); }
 .pipe-chip.off { color: var(--cs-text-secondary); border-style: dashed; }
 .sc-opt { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: var(--cs-radius-lg); padding: 3px 11px; background: transparent; color: var(--cs-text-secondary); font: inherit; font-size: var(--cs-font-sm); cursor: pointer; white-space: nowrap; }

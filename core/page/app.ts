@@ -1267,21 +1267,23 @@ interface Views {
       const picked = S.draft.scenario && S.draft.scenario !== 'auto' && S.draft.scenario === sc;
       const auto = (id: string) => sc === id && !picked && id !== 'deliver';
       const info = scInfo(sc);
-      // Only what to pick here; making, editing and deleting scenarios is the Scenarios page's.
+      // Only what to pick here; making, editing and deleting scenarios is the Scenarios page's. Each by its name; what it
+      // does shows on its ⓘ, under the pointer or the keyboard's focus.
       patch(
         'scenarios',
         `<span class="menu-wrap sc-select">
           <button class="sc-current sc-${info.custom ? 'custom' : sc}" data-action="eff-menu" aria-haspopup="menu" title="${esc(`${info.hint}${auto(sc) ? '\n\nPicked from your words; choose another to change it.' : ''}`)}">${icon(info.icon)}${esc(info.label)}${auto(sc) ? '<span class="sc-auto">auto</span>' : ''}<span class="sc-caret">▾</span></button>
-          <div class="menu sc-menu" role="menu">${this.scenarioIds()
+          <div class="menu sc-menu sc-list" role="menu">${this.scenarioIds()
             .map((id) => {
               const x = scInfo(id);
               return `<div class="sc-item ${sc === id ? 'current' : ''}">
-                <button class="sc-pick" role="menuitemradio" aria-checked="${sc === id}" data-action="set-scenario" data-id="${esc(id)}">${icon(sc === id ? 'check' : x.icon)}<span class="sc-text"><b>${esc(x.label)}${auto(id) ? '<span class="sc-auto">auto</span>' : ''}</b><span class="muted small">${esc(x.hint)}</span></span></button>
+                <button class="sc-pick" role="menuitemradio" aria-checked="${sc === id}" data-action="set-scenario" data-id="${esc(id)}">${icon(sc === id ? 'check' : x.icon)}<span class="sc-text"><b>${esc(x.label)}${auto(id) ? '<span class="sc-auto">auto</span>' : ''}</b></span></button>
+                ${x.hint ? `<span class="sc-info" tabindex="0" aria-label="${esc(`What ${x.label} does`)}">${icon('info')}<span class="sc-tip" role="tooltip">${esc(x.hint)}</span></span>` : ''}
               </div>`;
             })
             .join('')}
             <div class="sc-foot">
-              <button class="sc-manage" data-action="nav" data-name="scenarios">${icon('edit')}Manage scenarios…<span class="muted small">agents and their order, models and effort, new ones, backup</span></button>
+              <button class="sc-manage" data-action="nav" data-name="scenarios" title="Agents and their order, models and effort, new ones, backup">${icon('edit')}Manage scenarios…</button>
             </div></div>
         </span>`
       );
