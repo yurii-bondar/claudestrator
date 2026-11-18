@@ -419,3 +419,16 @@ test('config: an agent uses only the MCP servers its mcpServers names, inherited
   assert.ok(said.some((m) => /gives the watcher agent the MCP server Sentry, which it reads through outside the sandbox/.test(m)), said.join(' | '));
   assert.deepEqual(await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana] }\n', 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, Sentry] }\n'), [], 'narrowing it says nothing');
 });
+
+test("config edits: unsetting a field of an agent the project's config does not name changes nothing, and an emptied agent leaves no trace", async () => {
+  for (const [start, end] of [
+    ['repos:\n  api: {}\n', 'repos:\n  api: {}\n'],
+    ['agents:\n  developer: { model: opus }\n', 'agents:\n  developer: { model: opus }\n'],
+    ['agents:\n  planner: { effort: high }\n  developer: { model: opus }\n', 'agents:\n  developer: { model: opus }\n'],
+    ['agents:\n  planner: { effort: high }\nrepos:\n  api: {}\n', 'repos:\n  api: {}\n'],
+  ]) {
+    const ws = workspace(start!);
+    await config.updateAgentConfig(ws, 'planner', { effort: null, mcpServers: null });
+    assert.equal(fs.readFileSync(path.join(ws, '.claudestrator', 'config.yaml'), 'utf8'), end, start);
+  }
+});

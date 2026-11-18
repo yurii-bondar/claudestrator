@@ -1509,8 +1509,15 @@ async function updateAgentConfig(workspace: string, agent: string, patch: Record
   if (issues.length) throw new Error(`invalid agent change: ${issues.join('; ')}`);
   return editProjectConfig(workspace, (doc) => {
     for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === null) doc.deleteIn(['agents', agent, key]);
-      else writeIn(doc, ['agents', agent, key], value);
+      // An agent the project's config does not change yet has nothing to remove.
+      if (value === undefined || value === null) {
+        if (doc.hasIn(['agents', agent, key])) doc.deleteIn(['agents', agent, key]);
+      } else writeIn(doc, ['agents', agent, key], value);
+    }
+    // Back to the definition below it: no `planner: {}` or `agents: {}` left behind.
+    for (const at of [['agents', agent], ['agents']]) {
+      const node = doc.getIn(at, true) as YamlCollection | undefined;
+      if (node && node.items && node.items.length === 0) doc.deleteIn(at);
     }
   });
 }
