@@ -420,6 +420,16 @@ test('config: an agent uses only the MCP servers its mcpServers names, inherited
   assert.deepEqual(await loosenedBy('agents:\n  watcher: { mcpServers: [Grafana] }\n', 'agents:\n  watcher: { extends: auditor, mcp: true, mcpServers: [Grafana, Sentry] }\n'), [], 'narrowing it says nothing');
 });
 
+test('config: repo sets are kept by name, of the repos the config has; a name or a list that is not one is refused', async () => {
+  const ws = workspace('repos:\n  api: {}\n  web: {}\nrepoSets:\n  Backend: [api, gone]\n  "All of it": [api, web]\n');
+  const r = passed(await config.loadConfig({ workspace: ws, home: tmp('cs-home-') }));
+  assert.deepEqual(r.config.repoSets, { Backend: ['api'], 'All of it': ['api', 'web'] }, 'a repo removed since drops out of its set');
+  assert.equal(validateConfigLayer({ repoSets: { '-oops': ['api'] } }).length, 1, 'a name starts with a letter or a digit');
+  assert.equal(validateConfigLayer({ repoSets: { Backend: [] } }).length, 1, 'a set names at least one repo');
+  assert.equal(validateConfigLayer({ repoSets: { Backend: ['../etc'] } }).length, 1, 'a repo name, not a path');
+  assert.deepEqual(passed(await config.loadConfig({ workspace: workspace('repos:\n  api: {}\n'), home: tmp('cs-home-') })).config.repoSets, {});
+});
+
 test("config edits: unsetting a field of an agent the project's config does not name changes nothing, and an emptied agent leaves no trace", async () => {
   for (const [start, end] of [
     ['repos:\n  api: {}\n', 'repos:\n  api: {}\n'],

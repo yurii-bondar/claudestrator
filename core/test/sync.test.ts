@@ -9,9 +9,11 @@ import { execFileSync } from 'child_process';
 
 import { conflictPrompt, deleteMerged, isMerged, syncRepo } from '../src/sync';
 import type { RepoSync } from '../src/wire';
-import { GitRepo } from '../src/git';
+import { GitRepo, setChildEnv } from '../src/git';
 
 const ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+// What the sync itself runs commits merges too: with an identity of its own, whatever this machine's git config says.
+setChildEnv(ENV);
 const git = (dir: string, ...args: string[]): string => execFileSync('git', ['-C', dir, ...args], { env: ENV, encoding: 'utf8' }).trim();
 const write = (dir: string, file: string, text: string): void => {
   fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
@@ -139,4 +141,87 @@ test('sync: a merged branch checked out stays unless the checkout can go; a task
   assert.equal(git(api, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/'), 'main');
   assert.ok(!fs.existsSync(wt), 'its worktree went with it');
   assert.equal(git(seed, 'ls-remote', '--heads', 'origin', 'feat/done'), '', 'gone from origin');
+});
+
+/** Pushes a branch from the seed: made from `from` with one commit of `file`. */
+function pushBranch(seed: string, { name, from = 'main', file, text }: { name: string; from?: string; file: string; text: string }): void {
+  git(seed, 'checkout', '-q', '-b', name, from);
+  commit(seed, file, text);
+  git(seed, 'push', '-q', 'origin', name);
+  git(seed, 'checkout', '-q', 'main');
+}
+
+/** Whether origin's `branch` counts as merged into origin's main, as the clone sees it after a fetch. */
+async function mergedOnOrigin(api: string, branch: string): Promise<boolean> {
+  git(api, 'fetch', '-q', '--prune');
+  return isMerged(new GitRepo(api), `refs/remotes/origin/${branch}`, 'refs/remotes/origin/main');
+}
+
+test('sync: an early draft of what main holds in a later form counts as merged; a branch that went elsewhere does not', async () => {
+  const { seed, api } = repos();
+  commit(seed, 'calc.js', 'x\n');
+  git(seed, 'push', '-q', 'origin', 'main');
+  pushBranch(seed, { name: 'draft', file: 'calc.js', text: 'x\nconst total = sum(a)\n' });
+  pushBranch(seed, { name: 'elsewhere', file: 'calc.js', text: 'x\nconst total = 0\n' });
+  // main reworks the line the draft added: merging the draft only conflicts, and adds nothing main lacks.
+  commit(seed, 'calc.js', 'x\nconst total = sum(a) + tax(b)\n');
+  git(seed, 'push', '-q', 'origin', 'main');
+  assert.equal(await mergedOnOrigin(api, 'draft'), true);
+  assert.equal(await mergedOnOrigin(api, 'elsewhere'), false, 'its 0 is nowhere in main');
+});
+
+test('sync: an older point of a branch main holds counts as merged, and so does a stack level squashed into the PR above it', async () => {
+  const { seed, api } = repos();
+  commit(seed, 'f.txt', 'x\n');
+  git(seed, 'push', '-q', 'origin', 'main');
+
+  // older → newer, which reworks older's line; newer is squash-merged. older's own merge would only conflict.
+  pushBranch(seed, { name: 'older', file: 'f.txt', text: 'x\none\n' });
+  pushBranch(seed, { name: 'newer', from: 'older', file: 'f.txt', text: 'x\ntwo\n' });
+  git(seed, 'merge', '-q', '--squash', 'newer');
+  git(seed, 'commit', '-q', '-m', 'newer (#1)');
+  git(seed, 'push', '-q', 'origin', 'main');
+  assert.equal(await mergedOnOrigin(api, 'older'), true, 'newer holds it, and newer adds nothing to main');
+  // The stack rule below would also find it (newer has its commit); without it, the branch that holds it is enough.
+  assert.equal(await isMerged(new GitRepo(api), 'refs/remotes/origin/older', 'refs/remotes/origin/main', true), true);
+
+  // low is squash-merged into high (the PR above it), high reworks low's line and is squash-merged into main.
+  commit(seed, 's.txt', 'x\n');
+  git(seed, 'push', '-q', 'origin', 'main');
+  pushBranch(seed, { name: 'low', file: 's.txt', text: 'x\nalpha beta\n' });
+  git(seed, 'checkout', '-q', '-b', 'high', 'main');
+  git(seed, 'merge', '-q', '--squash', 'low');
+  git(seed, 'commit', '-q', '-m', 'low (#2)');
+  commit(seed, 's.txt', 'x\nalpha gamma\n');
+  git(seed, 'push', '-q', 'origin', 'high');
+  git(seed, 'checkout', '-q', 'main');
+  git(seed, 'merge', '-q', '--squash', 'high');
+  git(seed, 'commit', '-q', '-m', 'high (#3)');
+  git(seed, 'push', '-q', 'origin', 'main');
+  assert.equal(await mergedOnOrigin(api, 'low'), true, 'high holds a commit with its very tree, and high is in main');
+});
+
+test('sync: a main with commits of its own is not merged or rebased, only reported', async () => {
+  const { seed, api } = repos();
+  commit(api, 'mine.txt', 'mine\n');
+  commit(seed, 'theirs.txt', 'theirs\n');
+  git(seed, 'push', '-q', 'origin', 'main');
+  const r = await sync(api);
+  assert.deepEqual(r.pull, { kind: 'failed', branch: 'main', reason: 'main has commits of its own and cannot fast-forward to origin/main' });
+  assert.ok(!fs.existsSync(path.join(api, 'theirs.txt')));
+});
+
+test("sync: origin's branches go in one push, and one by one when that fails, each with its own outcome", async () => {
+  const { seed, api } = repos();
+  for (const name of ['feat/a', 'feat/b']) pushBranch(seed, { name, file: `${name.slice(5)}.txt`, text: `${name}\n` });
+  for (const name of ['feat/a', 'feat/b']) git(seed, 'merge', '-q', '--no-ff', '-m', `Merge ${name}`, name);
+  git(seed, 'push', '-q', 'origin', 'main');
+  const r = await sync(api);
+  assert.deepEqual(names(r), ['origin:feat/a', 'origin:feat/b']);
+  // Someone deletes feat/b before you do: the push of both fails, and each is tried on its own.
+  git(seed, 'push', '-q', 'origin', '--delete', 'feat/b');
+  const results = await deleteMerged(api, r.merged);
+  assert.deepEqual(results.map((x) => [x.id, x.ok]), [['api:origin:feat/a', true], ['api:origin:feat/b', false]]);
+  assert.match(results[1]!.note!, /^origin refused \(protected\? no credentials\?\)/);
+  assert.equal(git(seed, 'ls-remote', '--heads', 'origin', 'feat/a'), '');
 });

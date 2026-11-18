@@ -7,7 +7,8 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 
 import { Engine, cloudIdsFor, commentMismatch, summarizeInput } from '../src/engine';
-import { buildArgs } from '../src/runner';
+import { ClaudeRunner, buildArgs } from '../src/runner';
+import { CLI_FLAGS, FAKE } from './helpers/e2e';
 import { mcpServerAllowed, mcpToolAllowed, mcpToolPrefix } from '../src/mcp';
 import type { EngineOptions } from '../src/engine';
 import type { RunnerOptions } from '../src/runner';
@@ -355,4 +356,27 @@ test('policy: which of the servers an agent may use, by name', () => {
   assert.equal(mcpToolAllowed(some, 'mcp__Grafana__query_loki_logs'), true);
   assert.equal(mcpToolAllowed(some, 'mcp__Grafana2__query_loki_logs'), false);
   assert.equal(mcpToolPrefix('plugin:figma:figma'), 'mcp__plugin_figma_figma');
+});
+
+test('policy: a session of an agent with some MCP servers is started denied the account\'s others; one without a list asks for none', async () => {
+  let asked = 0;
+  const runner = new ClaudeRunner({
+    command: () => FAKE,
+    flags: () => new Set(CLI_FLAGS),
+    settingSources: () => ['project'],
+    env: () => ({}),
+    mcpServers: async () => (asked++, ['Grafana', 'Atlassian', 'claude.ai Slack']),
+  });
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-runner-mcp-'));
+  const start = async (agent: Record<string, unknown>) => {
+    const session = await runner.start({ agent: { model: 'haiku', instructions: '', ...agent }, prompt: 'hi', cwd, settings: {}, onOutput: () => {} });
+    await session.terminate(0);
+    const args = session.args;
+    return args[args.indexOf('--disallowedTools') + 1]!.split(',').filter((t) => t.startsWith('mcp__'));
+  };
+  assert.deepEqual(await start({ mcp: true, mcpServers: ['Grafana'] }), ['mcp__Atlassian', 'mcp__claude_ai_Slack']);
+  assert.equal(asked, 1);
+  assert.deepEqual(await start({ mcp: true }), [], 'every server: nothing denied');
+  assert.deepEqual(await start({ mcp: false, mcpServers: ['Grafana'] }), [], 'none at all: --strict-mcp-config does it');
+  assert.equal(asked, 1, 'the account\'s servers are looked up only for an agent with a list');
 });
