@@ -400,6 +400,34 @@ test('integrations: a hidden MCP server leaves the list for a folded one, and Sh
   assert.deepEqual(await shown(), ['asana', 'jenkins', 'atlassian']);
 });
 
+test("integrations: a server's menu gives it to an agent or takes it away; the agent keeps the servers it had", async () => {
+  // The servers of the test before: asana, jenkins, atlassian.
+  const agents = async () => Object.fromEntries((await b.eval(`window.CS.call('config')`)).agents.map((a) => [a.name, { mcp: a.mcp, mcpServers: a.mcpServers }]));
+  const wrap = (server) => `document.querySelector('.mcp-agents[data-server="${server}"]')`;
+  const ticked = (server, agent) => `${wrap(server)}.querySelector('[data-agent="${agent}"]').getAttribute('aria-checked') === 'true'`;
+  await until(`!!${wrap('asana')}`, 'the agents menu');
+  assert.deepEqual((await agents()).planner, { mcp: undefined, mcpServers: undefined }, 'the planner sees every server');
+  assert.equal(await b.eval(ticked('asana', 'planner')), true);
+  assert.equal(await b.eval(ticked('asana', 'developer')), false, 'the developer sees none (mcp: false)');
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-action="eff-menu"]').click(); ${wrap('asana')}.querySelector('[data-agent="planner"]').click(); true`);
+  await until(`!(${ticked('asana', 'planner')})`, 'asana taken from the planner');
+  assert.deepEqual((await agents()).planner.mcpServers, ['jenkins', 'atlassian'], 'the others stay');
+  assert.equal(await b.eval(`${wrap('asana')}.classList.contains('open')`), true, 'the menu stays open, for the next agent');
+  assert.equal(await b.eval(ticked('jenkins', 'planner')), true);
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-agent="developer"]').click(); true`);
+  await until(ticked('asana', 'developer'), 'asana given to the developer');
+  assert.deepEqual((await agents()).developer, { mcp: true, mcpServers: ['asana'] }, 'that server only');
+  assert.equal(await b.eval(ticked('jenkins', 'developer')), false);
+
+  await b.eval(`${wrap('asana')}.querySelector('[data-agent="developer"]').click(); true`);
+  await until(`!(${ticked('asana', 'developer')})`, 'asana taken from the developer again');
+  assert.deepEqual((await agents()).developer, { mcp: false, mcpServers: undefined }, 'its last server taken: none at all');
+
+  await b.eval(`(async () => { await window.CS.call('updateAgent', { name: 'planner', patch: { mcpServers: null } }); await window.CS.call('updateAgent', { name: 'developer', patch: { mcp: null } }); return true; })()`);
+});
+
 test('composer: Stay awake names the tool of each system and whether this one has it, offers to install it, and takes hours', async () => {
   const menu = `document.querySelector('[data-region="awake"]')`;
   // Linux without systemd-inhibit: the menu says so and offers the command that installs it.
