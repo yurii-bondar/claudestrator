@@ -99,7 +99,7 @@ test('settings: each session gets its own, and a stage writes only in the repos 
     assert.ok(sandboxOf(of(reviewer)).network.allowedDomains.includes('npm.acme.corp'), 'policy.network adds hosts');
     assert.ok(fs.existsSync(path.join(ws, 'web', 'feature.test.txt')), 'the tester still wrote in both repos');
     const denied = sandboxOf(of(tester)).credentials.envVars.map((v) => v.name);
-    assert.ok(denied.includes('ACME_DEPLOY_TOKEN') && denied.includes('CLAUDESTRATOR_HOOK_TOKEN'), 'shell commands see no credential of yours, nor the guard token');
+    assert.ok(denied.includes('ACME_DEPLOY_TOKEN') && denied.includes('CLAUDESTRATOR_HOOK_SESSION'), 'shell commands see no credential of yours, nor the guard token');
     assert.ok(calls.every((c: { ghToken: boolean; scrub?: string }) => !c.ghToken && c.scrub === undefined), 'no GitHub token reaches an agent; with the sandbox on, Claude Code needs no scrub');
   } finally {
     h.hooks.dispose();

@@ -1256,7 +1256,8 @@ class Engine extends EventEmitter {
       writeRoots,
       protect: [...configPaths(this.workspace, config), ...runsOutside, ownTempRoot()],
       secrets: [...this.secretFiles(), ...envFiles],
-      envVars: credentialVars({ ...getChildEnv(), [TOKEN_ENV]: '' }),
+      // The guard token is named so Claude Code does not take it for a credential; shell commands still never see it.
+      envVars: [...credentialVars(getChildEnv()), TOKEN_ENV],
       cwd,
       sandbox,
       network: config.policy.network,
