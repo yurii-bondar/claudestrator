@@ -32,6 +32,8 @@ interface AgentLayer {
   effort?: Effort;
   runs?: Runs;
   color?: string;
+  sandbox?: boolean;
+  writable?: string[];
   output?: Output;
   instructions?: InstructionsInput;
 }
@@ -163,6 +165,8 @@ interface Inherited {
   effort?: Effort | undefined;
   runs?: Runs | undefined;
   color?: string | undefined;
+  sandbox?: boolean | undefined;
+  writable?: string[] | undefined;
   output?: Output | undefined;
 }
 
@@ -600,6 +604,8 @@ async function loadLibraryFile(file: string, label: string): Promise<{ layer?: L
 
 const defined = <T extends object>(obj: T): Partial<T> => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 
+const expandHome = (p: string, home: string = os.homedir()): string => p.replace(/^~(?=$|[\\/])/, home);
+
 function toOp(layer: Layer, input: InstructionsInput | undefined): InstructionOp | undefined {
   if (input === undefined) return undefined;
   const dir = layer.baseDir;
@@ -617,10 +623,13 @@ function mergeLayers(layers: Layer[]): Merged {
   for (const layer of layers) {
     const c = layer.config;
     for (const [name, agent] of Object.entries(c.agents ?? {})) {
-      const { instructions, ...fields } = agent;
+      const { instructions, writable, ...fields } = agent;
       const prev: Draft = merged.agents.get(name) ?? { ops: [], layers: [] };
       const op = toOp(layer, instructions);
-      merged.agents.set(name, { ...prev, ...defined(fields), ops: op ? [...prev.ops, op] : prev.ops, layers: [...prev.layers, layer.name] });
+      // Named from the file that names them, like instruction files: a library's own folder stays its own wherever it is.
+      // `~` stays for now, so the check of what is too wide reads it against the home folder the config is loaded for.
+      const folders = writable && writable.map((dir) => (/^~(?=$|[\\/])/.test(dir) ? dir : path.resolve(layer.baseDir, dir)));
+      merged.agents.set(name, { ...prev, ...defined(fields), ...(folders && { writable: folders }), ops: op ? [...prev.ops, op] : prev.ops, layers: [...prev.layers, layer.name] });
     }
     for (const [name, repo] of Object.entries(c.repos ?? {})) merged.repos.set(name, { ...merged.repos.get(name), ...defined(repo) });
     if (c.pipeline) merged.pipeline = { names: [...c.pipeline], source: layer.name };
@@ -715,6 +724,8 @@ function resolveConfig(layers: Layer[], opts: { flags?: Flags | undefined; readF
       ...(base.effort && { effort: base.effort }),
       ...(base.runs && { runs: base.runs }),
       ...(base.color && { color: base.color }),
+      ...(base.sandbox !== undefined && { sandbox: base.sandbox }),
+      ...(base.writable && base.writable.length && { writable: base.writable.map((dir) => expandHome(dir)) }),
       output: base.output,
       instructions,
       instructionSources: base.ops.map((o) => ({ mode: o.mode, source: o.source })),
@@ -851,6 +862,8 @@ function resolveExtends(drafts: Map<string, Draft>, diags: Diagnostic[]): Map<st
       effort: draft.effort ?? base.effort,
       runs: draft.runs ?? base.runs,
       color: draft.color ?? base.color,
+      sandbox: draft.sandbox ?? base.sandbox,
+      writable: draft.writable ?? base.writable,
       output: draft.output ?? base.output,
       ops: [...base.ops, ...draft.ops],
     };
@@ -1121,6 +1134,11 @@ async function readConfig({ workspace, home, flags }: { workspace: string; home?
     const error: Diagnostic = { level: 'error', code: 'writable_too_wide', message: `policy.writable opens ${wide.join(', ')} to sandboxed commands: your home folder, a folder above it or the whole disk. Name the folder a tool writes (~/.cache/go-build)` };
     return { ok: false, errors: [error], warnings: diagnostics.filter((d) => d.level === 'warning') };
   }
+  const wideAgents = [...merged.agents].map(([name, d]) => ({ name, wide: tooWide(d.writable ?? [], homeDir) })).filter((a) => a.wide.length);
+  if (wideAgents.length) {
+    const errors: Diagnostic[] = wideAgents.map((a) => ({ level: 'error', code: 'writable_too_wide', agent: a.name, message: `agent "${a.name}" may write ${a.wide.join(', ')}: your home folder, a folder above it or the whole disk. Name the folder it works in` }));
+    return { ok: false, errors, warnings: diagnostics.filter((d) => d.level === 'warning') };
+  }
   // A file no layer may name is not read: it counts as one that cannot be read (an error for an agent that runs).
   const refused = new Map<string, Error>();
   const ops = [...[...merged.agents.values()].flatMap((d) => d.ops), ...stepFileOps(merged.scenarios)];
@@ -1195,6 +1213,9 @@ function loosened(layers: Layer[]): Diagnostic[] {
       const reach = (agent.tools ?? []).filter((t) => (t === 'WebFetch' || t === 'WebSearch' || t.startsWith('WebFetch(') || t.startsWith('mcp__')) && !before.includes(t));
       if (reach.length) agents.push(diag(layer, `gives the ${name} agent ${reach.join(', ')}, which reach${reach.length === 1 ? 'es' : ''} outside the sandbox`));
       if (agent.mcp === true && was && was.mcp === false) agents.push(diag(layer, `turns MCP servers on for the ${name} agent, which reads through them outside the sandbox`));
+      if (agent.sandbox === false && !(was && was.sandbox === false)) agents.push(diag(layer, `runs the ${name} agent's commands outside the sandbox: with your credentials and any host`));
+      const folders = (agent.writable ?? []).map((w) => (/^~(?=$|[\\/])/.test(w) ? w : path.resolve(layer.baseDir, w))).filter((w) => !((was && was.writable) ?? []).includes(w));
+      if (folders.length) agents.push(diag(layer, `lets the ${name} agent write ${folders.join(', ')} besides its repos`));
       const servers = was && was.mcpServers && agent.mcpServers ? agent.mcpServers.filter((x) => !was.mcpServers!.includes(x)) : [];
       if (servers.length) agents.push(diag(layer, `gives the ${name} agent the MCP server${servers.length === 1 ? '' : 's'} ${servers.join(', ')}, which it reads through outside the sandbox`));
     }

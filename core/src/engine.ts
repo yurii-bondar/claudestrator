@@ -1249,7 +1249,7 @@ class Engine extends EventEmitter {
    * A session's settings (`--settings`): the guard hook in front of every tool call, and what Claude Code enforces
    * itself: deny rules for secrets and pushes, and the sandbox around shell commands (writes only in `writeRoots`).
    */
-  agentSettings({ writeRoots, cwd, config, runsOutside = [], envFiles = [] }: { writeRoots: string[]; cwd: string; config: Config; runsOutside?: string[]; envFiles?: string[] }): Record<string, unknown> {
+  agentSettings({ writeRoots, cwd, config, runsOutside = [], envFiles = [], sandbox = config.policy.sandbox }: { writeRoots: string[]; cwd: string; config: Config; runsOutside?: string[]; envFiles?: string[]; sandbox?: boolean }): Record<string, unknown> {
     return sessionSettings({
       hooks: this.hooks.settings(),
       guard: this.hooks.host(),
@@ -1258,7 +1258,7 @@ class Engine extends EventEmitter {
       secrets: [...this.secretFiles(), ...envFiles],
       envVars: credentialVars({ ...getChildEnv(), [TOKEN_ENV]: '' }),
       cwd,
-      sandbox: config.policy.sandbox,
+      sandbox,
       network: config.policy.network,
       writable: config.policy.writable,
       localPorts: config.policy.localPorts,
@@ -1338,8 +1338,8 @@ class Engine extends EventEmitter {
    * scrub, which strips credentials from what its shell commands, hooks and MCP servers inherit (the sandbox does that
    * for shell commands by name).
    */
-  agentEnv(hookEnv: Record<string, string>, config: Config): Record<string, string> {
-    return { ...hookEnv, ...(!config.policy.sandbox && { CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' }) };
+  agentEnv(hookEnv: Record<string, string>, config: Config, sandbox: boolean = config.policy.sandbox): Record<string, string> {
+    return { ...hookEnv, ...(!sandbox && { CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' }) };
   }
 
   /**
@@ -1583,6 +1583,9 @@ class Engine extends EventEmitter {
     emitItem({ type: 'prompt', text: prompt });
 
     const writeRoots = stage.scope === 'repo' ? [repoDir as string] : workRepos.map((r) => r.dir);
+    // The folders the agent's own config names come on top of the stage's repos: a report agent writes only there.
+    const allowWrite = [...writeRoots, ...(agent.writable ?? [])];
+    const sandboxed = config.policy.sandbox && agent.sandbox !== false;
     const gated = (stage.scope === 'repo' ? [step.repo] : workRepos.map((r) => r.name)).some((n) => n && config.repos[n] && config.repos[n]!.gates.length);
     if (gated) await this.ensureSandbox(config);
     const runsOutside = await this.runsOutside(writeRoots);
@@ -1616,7 +1619,7 @@ class Engine extends EventEmitter {
     const hook = this.hooks.register((call) => {
       // A tool call is a sign of work, also one of a subagent the agent started.
       this.activity.set(watchKey(taskId, key), Date.now());
-      return this.decide({ taskId, step, writeRoots, runsOutside, webHosts, config, call, emitItem, propose });
+      return this.decide({ taskId, step, writeRoots: allowWrite, runsOutside, webHosts, config, call, emitItem, propose });
     });
     let session: ClaudeSession;
     try {
@@ -1624,12 +1627,12 @@ class Engine extends EventEmitter {
       agent,
       prompt,
       cwd,
-      settings: this.agentSettings({ writeRoots, cwd, config, runsOutside, envFiles: await this.envFiles([...writeRoots, ...Object.values(config.repos).map((r) => path.resolve(this.workspace, r.path))]) }),
+      settings: this.agentSettings({ writeRoots: allowWrite, cwd, config, runsOutside, sandbox: sandboxed, envFiles: await this.envFiles([...writeRoots, ...Object.values(config.repos).map((r) => path.resolve(this.workspace, r.path))]) }),
       ...(REPORT_SCHEMAS[stage.output] && { jsonSchema: REPORT_SCHEMAS[stage.output] }),
       // Only the repos a stage writes are working directories; it reads the task folder, the workspace and other repos
       // through the guard, which allows reading.
-      additionalDirectories: await filterAsync([...new Set(writeRoots)], async (d) => !(await realInside(cwd, d))),
-      env: this.agentEnv(hook.env, config),
+      additionalDirectories: await filterAsync([...new Set(allowWrite)], async (d) => !(await realInside(cwd, d))),
+      env: this.agentEnv(hook.env, config, sandboxed),
       name: `claudestrator ${taskId} · ${label}`,
       ...this.progress(taskId, {
         agent: step.agent,

@@ -246,6 +246,14 @@ export interface Agent {
   effort?: Effort;
   runs?: Runs;
   color?: string;
+  /**
+   * `false`: this agent's shell commands run outside Claude Code's sandbox, whatever `policy.sandbox` says (an agent
+   * that drives a cluster, a deploy or another Claude Code session needs its credentials and the network). Unset: the
+   * policy decides. The guard still reads every command and every file write.
+   */
+  sandbox?: boolean;
+  /** Folders, as absolute paths, this agent may write besides the repos its stage writes: a report agent's work folder. */
+  writable?: string[];
   output: Output;
   instructions: string;
   instructionSources: { mode: string; source: string }[];

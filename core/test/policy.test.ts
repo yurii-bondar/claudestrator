@@ -380,3 +380,28 @@ test('policy: a session of an agent with some MCP servers is started denied the 
   assert.deepEqual(await start({ mcp: false, mcpServers: ['Grafana'] }), [], 'none at all: --strict-mcp-config does it');
   assert.equal(asked, 1, 'the account\'s servers are looked up only for an agent with a list');
 });
+
+
+test('policy: an agent with sandbox: false runs its commands outside the sandbox, with credentials scrubbed from them', async () => {
+  const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-policy-')));
+  fs.mkdirSync(path.join(ws, '.claudestrator'));
+  fs.writeFileSync(path.join(ws, '.claudestrator', 'config.yaml'), 'agents:\n  reviewer: { sandbox: false, tools: [Read, Write, Bash] }\n');
+  const hooks = { settings: () => ({}), host: () => '127.0.0.1:1' } as unknown as EngineOptions['hooks'];
+  const engine = new Engine({ workspace: ws, home: ws, runner: {} as EngineOptions['runner'], hooks });
+  const config = await engine.config();
+  const folder = path.join(ws, 'runs');
+
+  const settings = engine.agentSettings({ writeRoots: [folder], cwd: ws, config, sandbox: false }) as { sandbox?: unknown };
+  assert.equal(settings.sandbox, undefined, 'no sandbox for its commands');
+  const usual = engine.agentSettings({ writeRoots: [], cwd: ws, config }) as { sandbox?: { enabled: boolean } };
+  assert.equal(usual.sandbox?.enabled, config.policy.sandbox ? true : undefined, 'the others keep the policy');
+
+  assert.equal(engine.agentEnv({}, config, false).CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, '1', 'its subprocesses get no credentials from the environment');
+  assert.equal(engine.agentEnv({}, config, true).CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, undefined);
+
+  // A folder its config names is one it writes; anywhere else stays refused.
+  const decide = (file: string) => engine.decide({ taskId: 'T-1', step: { stage: 0, agent: 'reviewer' }, writeRoots: [folder], config, call: { tool: 'Write', input: { file_path: file }, cwd: ws }, emitItem: () => {} });
+  assert.ok((await decide(path.join(folder, 'REPORT.md'))).allow);
+  assert.ok(!(await decide(path.join(ws, 'elsewhere.md'))).allow);
+});
+

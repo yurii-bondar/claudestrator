@@ -152,6 +152,8 @@ const AGENT_LAYER: Record<string, Check> = {
   'mcp?': T.bool(),
   'mcpServers?': T.arr(T.str(1)),
   'maxTurns?': T.int(1),
+  'sandbox?': T.bool(),
+  'writable?': T.arr(T.str(1)),
   'effort?': T.oneOf(EFFORTS),
   'color?': T.oneOf(AGENT_COLORS),
   'output?': T.oneOf(OUTPUTS),
