@@ -13,8 +13,12 @@ interface ToolCall {
 type Decision = { allow: boolean; reason?: string };
 type Decide = (call: ToolCall) => Promise<Decision> | Decision;
 
-/** The variable the session's token travels in; Claude Code puts it into the hook's Authorization header. */
-const TOKEN_ENV = 'CLAUDESTRATOR_HOOK_TOKEN';
+/**
+ * The variable the session's token travels in; Claude Code puts it into the hook's Authorization header. Its name must
+ * not read as a credential's: with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set (an agent outside the sandbox), Claude Code
+ * interpolates no credential into an HTTP hook header, and every tool call would arrive with no token and be denied.
+ */
+const TOKEN_ENV = 'CLAUDESTRATOR_HOOK_SESSION';
 const HOOK_PATH = '/pretooluse';
 /** A Write carries the whole file; anything larger is refused rather than read into memory. */
 const MAX_BODY = 32 * 1024 * 1024;

@@ -63,6 +63,13 @@ test('hooks: the settings send every tool call to the server with the token from
   }
 });
 
+test('hooks: the token travels in a variable whose name does not read as a credential', () => {
+  // Claude Code, with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set (an agent outside the sandbox), interpolates no credential
+  // into an HTTP hook header: CLAUDESTRATOR_HOOK_TOKEN arrived as a bare "Bearer" and every tool call was denied.
+  // Claudestrator's own credentialVars is stricter (it counts SESSION) and keeps the variable from shell commands.
+  assert.doesNotMatch(TOKEN_ENV, /TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH/);
+});
+
 test('hooks: a guard that cannot answer blocks the tool call', async () => {
   // A guard whose server is gone: what an agent sees when VS Code closed or the extension restarted.
   const gone = new HookServer();

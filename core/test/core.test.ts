@@ -1887,6 +1887,49 @@ test('config: policy.writable opens no home folder, nothing above it and not the
   }
 });
 
+test('config: an agent names folders it writes besides its repos, and may run its commands outside the sandbox', async () => {
+  const home = fs.realpathSync(tmp('cs-home-'));
+  const ws = tmp('cs-ws-');
+  const lib = fs.realpathSync(tmp('cs-lib-'));
+  fs.writeFileSync(path.join(lib, 'library.yaml'), [
+    'agents:',
+    '  runner:',
+    '    description: Runs a trial',
+    '    output: audit',
+    '    sandbox: false',
+    '    writable: [runs, ~/trials, /opt/trial-cache]',
+    '    instructions: Run it.',
+    '  reader:',
+    '    description: Reads a trial',
+    '    output: audit',
+    '    instructions: Read it.',
+    '',
+  ].join('\n'));
+  userConfig(home, `libraries: [${lib}]\n`);
+
+  const agents = passed(await loadCfg({ workspace: ws, home })).config.agents;
+  assert.equal(agents['runner']!.sandbox, false);
+  assert.deepEqual(agents['runner']!.writable, [path.join(lib, 'runs'), path.join(os.homedir(), 'trials'), '/opt/trial-cache'], 'relative to the library, ~ to your home folder');
+  assert.equal(agents['reader']!.sandbox, undefined, 'unset: the policy decides');
+  assert.equal(agents['reader']!.writable, undefined);
+
+  // A library the project lists says what it loosens; one you list yourself is yours.
+  fs.mkdirSync(path.join(ws, '.claudestrator'));
+  fs.writeFileSync(path.join(ws, '.claudestrator', 'config.yaml'), `libraries: [${lib}]\n`);
+  userConfig(home, '');
+  const loosened = passed(await loadCfg({ workspace: ws, home })).warnings.filter((w) => w.code === 'policy_loosened').map((w) => w.message);
+  assert.ok(loosened.some((m) => /runs the runner agent's commands outside the sandbox/.test(m)), 'sandbox: false is a warning');
+  assert.ok(loosened.some((m) => m.includes(`lets the runner agent write ${path.join(lib, 'runs')}`)), 'so is a folder it writes');
+  fs.rmSync(path.join(ws, '.claudestrator'), { recursive: true });
+
+  // Your home folder, one above it or the whole disk is no agent's to write.
+  for (const w of ['~', path.dirname(home), '/']) {
+    userConfig(home, `libraries: [${lib}]\nagents:\n  reader: { writable: ['${w}'] }\n`);
+    const r = await loadCfg({ workspace: ws, home });
+    assert.ok(!r.ok && r.errors.some((e) => e.code === 'writable_too_wide' && e.agent === 'reader'), w);
+  }
+});
+
 test('view: streamed text of one step merges into one message, other items keep their order', async () => {
   const q: OutputPush[] = [];
   const delta = (key: string, text: string): OutputPush => ({ type: 'output', taskId: 'T', key, item: { type: 'text_delta', text } });
