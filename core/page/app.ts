@@ -160,6 +160,8 @@ interface Views {
     zap: 'M13 2 3 14h9l-1 8 10-12h-9z',
     list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
     menu: 'M4 6h16M4 12h16M4 18h16',
+    'sidebar-left': 'M4 4h16v16H4zM9 4v16',
+    'sidebar-right': 'M4 4h16v16H4zM15 4v16',
     activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
     gauge: 'M12 14l4-4M3.34 19a10 10 0 1 1 17.32 0',
     plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4',
@@ -465,6 +467,7 @@ interface Views {
           <aside class="rail" id="rail" aria-label="Claudestrator">
             <div class="rail-head">
               <button class="brand" data-action="go-home" data-region="workspace"></button>
+              <button class="icon-btn rail-fold" data-action="toggle-rail" aria-controls="rail" data-region="rail-fold"></button>
               <button class="icon-btn rail-close" data-action="toggle-nav" aria-label="Close the menu" title="Close the menu">${icon('x')}</button>
             </div>
             <div class="rail-new-row">
@@ -491,7 +494,26 @@ interface Views {
     }
     // Start (choosing the account) is the whole window: no rail, no top bar.
     $('.shell', app)!.classList.toggle('bare', S.route.name === 'start');
+    setRailCollapsed(S.ui.railCollapsed === true);
     renderNav();
+  }
+
+  /**
+   * Folds the rail to its icons, or unfolds it, in a wide panel: the work gets the width. Each section keeps its icon
+   * with its name on hover, and its count as a dot. A narrow panel opens the rail as a sheet whole either way.
+   */
+  function setRailCollapsed(collapsed: boolean) {
+    const shell = $('.shell');
+    if (!shell) return;
+    shell.classList.toggle('rail-collapsed', collapsed);
+    const label = collapsed ? 'Expand the sidebar' : 'Collapse the sidebar';
+    const btn = $('.rail-fold');
+    if (btn) {
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+    patch('rail-fold', icon('sidebar-left'));
   }
 
   /** Opens or closes the rail as a sheet (narrow panels only; a wide one always shows it). */
@@ -516,7 +538,7 @@ interface Views {
         badge = bad ? `<span class="nb err" title="${plural(bad, 'server')} with a problem">${bad}</span>` : o.mcp.connected === o.mcp.total ? '<span class="mcp-dot s-connected" title="All connected"></span>' : '<span class="mcp-dot s-installed" title="Not checked yet"></span>';
       }
       const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram') || (n.name === 'repos' && S.route.name === 'sync'));
-      return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''}>${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
+      return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''} title="${esc(n.label)}">${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
     };
     // Tasks is the root of the tree, an item like the others: a click opens or folds the tasks under it (the logo opens
     // the Tasks page), folded until you open it. With no tasks yet it opens the page.
@@ -1842,6 +1864,11 @@ interface Views {
       go({ name: el.dataset.name, ...(el.dataset.section && { section: el.dataset.section }) });
     },
     'toggle-nav': () => setNavOpen(!$('.shell')?.classList.contains('nav-open')),
+    'toggle-rail': () => {
+      S.ui.railCollapsed = !S.ui.railCollapsed;
+      persist();
+      setRailCollapsed(S.ui.railCollapsed);
+    },
     'nav-settings': () => go({ name: 'settings' }),
     'go-home': () => {
       setNavOpen(false);
@@ -2203,6 +2230,8 @@ interface Views {
       persist();
     },
     'tasks-toggle': () => {
+      // A folded rail has no room for the tree: Tasks opens its page, as its icon says.
+      if (S.ui.railCollapsed && window.matchMedia('(min-width: 761px)').matches) return void go({ name: 'home' });
       S.ui.tasksOpen = !S.ui.tasksOpen;
       persist();
       renderNav();

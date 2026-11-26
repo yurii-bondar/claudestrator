@@ -140,6 +140,10 @@ interface UiState {
   showFinished?: boolean;
   /** The rail lists the tasks under the Tasks item (else they are folded, as they are until you open them). */
   tasksOpen?: boolean;
+  /** The rail is folded to its icons (a wide panel; a narrow one opens it as a sheet anyway). */
+  railCollapsed?: boolean;
+  /** A scenario diagram's right column is hidden: the canvas takes the width. */
+  dgSideCollapsed?: boolean;
   /** Sections of the rail's tree opened or folded by hand, by key; the rest are open while they hold unfinished tasks. */
   treeOpen?: Record<string, boolean>;
   /** Sections whose finished tasks are listed, not folded into one row. */
