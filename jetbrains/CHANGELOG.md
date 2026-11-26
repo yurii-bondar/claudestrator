@@ -1,3 +1,9 @@
+## [0.18.2](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.18.1...jetbrains-claudestrator-v0.18.2) (2026-11-26)
+
+### Bug Fixes
+
+* **core:** hide a diagram's side panel from beside Fit again, and unfold the rail from its top ([fb1a6e2](https://github.com/yurii-bondar/claudestrator/commit/fb1a6e233ebecfa2527596ec7d4a701e17d6bb0f))
+
 ## [0.18.1](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.18.0...jetbrains-claudestrator-v0.18.1) (2026-11-26)
 
 ### Bug Fixes
