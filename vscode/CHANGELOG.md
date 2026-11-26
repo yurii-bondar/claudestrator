@@ -1,3 +1,9 @@
+## [0.23.0](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.22.0...claudestrator-v0.23.0) (2026-11-26)
+
+### Features
+
+* **core:** view any scenario as a diagram, from a menu on each one ([be3887d](https://github.com/yurii-bondar/claudestrator/commit/be3887d2718d2ff618e0ec19ee29778239da151a))
+
 ## [0.22.0](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.21.0...claudestrator-v0.22.0) (2026-11-26)
 
 ### Features
