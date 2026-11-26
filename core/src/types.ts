@@ -568,6 +568,11 @@ export interface TaskState {
   scenarioLabel?: string | undefined;
   /** The group as it was when the task started, or the one its ticket's sub-tasks went into. */
   group?: TaskGroup;
+  /**
+   * The branch you chose for the task to start from (and its PRs to go into), in each repo where origin has it. It wins
+   * over the group's and over one the plan names; without it each repo starts from its base, `main` unless configured.
+   */
+  baseBranch?: string;
   /** The tasks its ticket's sub-tasks became, when it split. */
   children?: string[];
   /** The instructions as they were when the task started: editing one later does not change a running task. */
@@ -663,6 +668,7 @@ export type OrchEvent = EventBase &
         scenarioName?: string;
         scenarioLabel?: string | undefined;
         group?: TaskGroup;
+        baseBranch?: string;
         instructions?: TaskInstruction[];
         auto: boolean;
         pipeline: StoredPipeline;

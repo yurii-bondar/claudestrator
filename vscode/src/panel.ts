@@ -352,6 +352,10 @@ class DashboardPanel implements RpcHandlers {
     return r;
   }
 
+  async $startBranches() {
+    return this.engine.startBranches();
+  }
+
   async $setAwake({ taskId, awake }: Rpc['setAwake']['params']) {
     if (awake) this.orch.keepAwake.want(taskId, awake.minutes);
     else this.orch.keepAwake.drop(taskId);

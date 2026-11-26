@@ -110,6 +110,8 @@ interface Draft {
   instructions: string[];
   /** Whether the task keeps the computer awake while it runs, and how long at most. */
   awake: AwakeChoice | null;
+  /** The branch the task starts from; empty: each repo's base (main unless configured). */
+  base: string;
 }
 
 /** The group or instruction being written in the composer; without `id` it is a new one. */

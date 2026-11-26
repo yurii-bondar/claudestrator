@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parsePlanMeta, parseVerdict, parseReadiness, parseAudit, parseWork } from './protocol';
 import { deriveTaskId, sourceRef } from './intake';
 import type { RunAction } from './machine';
+import type { StartPoint } from './git';
 import type { Audit, GroupType, NextMode, Output, ParseResult, PlanMeta, Readiness, TaskState, Verdict, WorkReport } from './types';
 
 /** Outputs whose report ends with a JSON block a program validates. */
@@ -35,6 +36,26 @@ interface PromptRepo {
   dir: string;
   role?: string | undefined;
   baseBranch?: string;
+  /** For a planner: where the task branch of this repo would start, and how the checkout stands against it. */
+  start?: StartPoint | null | undefined;
+}
+
+const short = (sha: string): string => sha.slice(0, 10);
+const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+/**
+ * A repo as a planner reads it: where it is, where its task branch starts and whether the checkout is that. A
+ * checkout elsewhere says how far: the planner reads the start with git, not the files in front of it.
+ */
+function plannerRepo(r: PromptRepo): string {
+  const role = r.role ? ` (${r.role})` : '';
+  const p = r.start;
+  if (!p) return `- ${r.name} at ${r.dir}${role}: its task branch starts from ${r.baseBranch}, which Claudestrator could not read there (no such branch, or not a git repository)`;
+  const from = `its task branch starts from ${p.ref} at ${short(p.sha)}${p.fetched ? '' : ' (as last fetched: origin could not be asked now)'}`;
+  if (p.head === p.sha && !p.dirty) return `- ${r.name} at ${r.dir}${role}: ${from}, which is what is checked out there`;
+  const on = p.branch && p.branch !== 'HEAD' ? `on ${p.branch}` : 'on a detached HEAD';
+  const apart = [p.ahead && `${count(p.ahead, 'commit')} the start does not have`, p.behind && `${count(p.behind, 'commit')} behind it`, p.dirty && `${count(p.dirty, 'uncommitted file')}`].filter(Boolean).join(', ');
+  return `- ${r.name} at ${r.dir}${role}: ${from}; the checkout there is NOT that: ${on}${apart ? `, ${apart}` : ''}. Read the start with git -C ${r.dir} show ${p.ref}:<path> and git -C ${r.dir} grep <pattern> ${p.ref}; git -C ${r.dir} diff --stat ${p.ref} lists what differs`;
 }
 
 interface PromptArgs {
@@ -91,7 +112,12 @@ function buildAgentPrompt({ state, next, taskDir, language, repoDir, workRepos, 
   if (workRepos && workRepos.length) {
     lines.push('', 'Repositories of this task (cover the changes in every one of them; work only there):', ...workRepos.map((r) => `- ${r.name} at ${r.dir}`));
   }
-  if (repos && repos.length) {
+  if (repos && repos.length && next.output === 'plan' && repos.some((r) => r.start !== undefined)) {
+    lines.push('', 'Repositories (read them; change nothing):', ...repos.map(plannerRepo));
+    lines.push('Name the repos of your plan exactly as listed here.');
+    // What is checked out is not what the task works on: branch mode switches to the task branch only after the plan.
+    if (repos.some((r) => r.start && (r.start.head !== r.start.sha || r.start.dirty))) lines.push("Plan against where each task branch starts, not against the checkout where they differ: what only the checkout has (its own commits, uncommitted files) will not be on the task branch, and what it lacks will be. Say in the plan when the checkout's state matters to it (work it would need that is not merged, say).");
+  } else if (repos && repos.length) {
     lines.push('', 'Repositories (read them where they are; change nothing):', ...repos.map((r) => `- ${r.name} at ${r.dir} (base branch ${r.baseBranch})${r.role ? `: ${r.role}` : ''}`));
     if (next.output === 'plan') lines.push('Name the repos of your plan exactly as listed here.');
   }
@@ -133,8 +159,10 @@ function buildAgentPrompt({ state, next, taskDir, language, repoDir, workRepos, 
     lines.push(`${SETTINGS_FILES} are not yours to write: their hooks, permissions, MCP servers and tasks act outside the sandbox. When your part needs a change to one, make it with the Write or Edit tool all the same: Claudestrator refuses the write, keeps the change and puts it to the user when your step ends. Make it no other way (a shell command, git apply), it is no blocker, and name the file in your report. A file that should be as it is on another branch: read it with git show <ref>:<path>, then Write it.`);
     if (checkEnv?.length) lines.push(`${checkEnv.join(', ')} reach Claudestrator's checks and git hooks only (policy.checkEnv), never your shell, which gets none of the user's credentials. A test that needs one (an integration suite and its database's URL) runs in those checks after your step, and their result is the one that counts: do not run it yourself, and a variable missing from your shell is no blocker.`);
   }
+  // The start you chose holds wherever origin has it: the planner names no other there.
+  if (next.output === 'plan' && state.baseBranch) lines.push(`The user chose ${state.baseBranch} for this task to start from, in each repo where origin has it, and its PRs go into it: Claudestrator sets it as baseBranch of those repos, whatever the plan names. Name a baseBranch only for a repo that has no ${state.baseBranch}.`);
   // Where the group's tasks start: the planner leaves baseBranch out for those repos, or names another on purpose.
-  if (next.output === 'plan' && state.group && state.group.baseBranch) lines.push(`Tasks of "${state.group.label}" start from ${state.group.baseBranch} in each repo where origin has that branch, and their PRs go into it: Claudestrator sets it as baseBranch of a repo your plan names none for. Name another only when this task must start elsewhere.`);
+  else if (next.output === 'plan' && state.group && state.group.baseBranch) lines.push(`Tasks of "${state.group.label}" start from ${state.group.baseBranch} in each repo where origin has that branch, and their PRs go into it: Claudestrator sets it as baseBranch of a repo your plan names none for. Name another only when this task must start elsewhere.`);
   if (next.output === 'plan') lines.push(`${SETTINGS_FILES} are not an agent's to write: a change the task needs there goes to the user to apply. Say in the plan which of those files change, and how.`);
   // A finding there goes to the user, not into a fix round: only its file says so.
   if (next.output === 'verdict') lines.push(`${SETTINGS_FILES} are not an agent's to write: a finding about one goes to the user. Give such a finding its file.`);
@@ -226,5 +254,5 @@ function workReport(text: string, structured?: unknown): WorkReport {
   return block.ok ? parseWork(block.value) : { status: 'done', blockers: [] };
 }
 
-export type { StageReport };
+export type { PromptRepo, StageReport };
 export { buildAgentPrompt, lastJsonBlock, parseStageReport, reportLanguage, withStepInstructions, workReport, workTurn };

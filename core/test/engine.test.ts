@@ -707,7 +707,8 @@ test('engine: a plan for a repo the workspace does not have goes back to the pla
     assert.deepEqual(s.repos.map((r) => r.name), ['api']);
     const planner = await h.engine.svc.readTranscript(taskId, (await view.detail(h.engine, taskId)).steps.find((st) => st.agent === 'planner')!.key!);
     const prompt = text(planner.find((i) => i.type === 'prompt')!.text);
-    assert.match(prompt, /- api at .+ \(base branch main\): Betting API\nName the repos of your plan exactly as listed here\./);
+    assert.match(prompt, /- api at .+ \(Betting API\): its task branch starts from main at [0-9a-f]{10} \(as last fetched: origin could not be asked now\), which is what is checked out there\nName the repos of your plan exactly as listed here\./);
+    assert.doesNotMatch(prompt, /Plan against where each task branch starts/, 'a checkout that is the start needs no warning');
     assert.ok(planner.some((i) => i.type === 'user' && i.from === 'orchestrator' && /repos this workspace does not have \(betting-service\); name them as configured: api/.test(text(i.text))));
   } finally {
     h.hooks.dispose();
@@ -758,6 +759,60 @@ test('engine: a plan names the branch a repo starts from: the task branches from
     assert.equal(git(api, 'rev-list', '--count', `origin/promo..${branch}`).trim(), '1', 'and only the task commit past it');
     const ctx = await h.engine.checkpointContext(s, s.checkpoint!);
     assert.deepEqual(ctx.repos!.map((r) => [r.name, r.base, r.files]), [['api', 'promo', 1]], 'the push goes into promo, with the task change alone');
+  } finally {
+    h.hooks.dispose();
+  }
+});
+
+test('engine: the branch you start a task from holds over the plan; the planner hears where it starts and that the checkout is elsewhere', async () => {
+  const ws = workspace(['api'], 'pipeline: [planner, developer]\nrepos:\n  api: {}\n');
+  const api = path.join(ws, 'api');
+  const commit = (dir: string, file: string, body: string, msg: string): void => {
+    fs.writeFileSync(path.join(dir, file), body);
+    git(dir, 'add', '.');
+    git(dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', msg);
+  };
+  // origin has main and release/2.x; you sit on wip, a commit past main that is on no branch of origin.
+  const origin = path.join(ws, 'origin.git');
+  git(ws, 'init', '-q', '--bare', origin);
+  git(api, 'remote', 'add', 'origin', origin);
+  git(api, 'push', '-q', 'origin', 'main');
+  git(api, 'switch', '-q', '-c', 'release/2.x');
+  commit(api, 'release.ts', 'export const v = 2;\n', 'release');
+  git(api, 'push', '-q', 'origin', 'release/2.x');
+  git(api, 'switch', '-q', 'main');
+  git(api, 'branch', '-q', '-D', 'release/2.x');
+  git(api, 'switch', '-q', '-c', 'wip');
+  commit(api, 'wip.ts', 'export const wip = true;\n', 'wip');
+  // The planner names another base: the one you chose wins.
+  const h = await harness(ws, { FAKE_REPOS: 'api', FAKE_PLAN_BASE: 'main' });
+  try {
+    const bad = await h.engine.preview({ text: 'Add the feature --base ../x' });
+    assert.ok(!bad.ok && /--base names the branch/.test(bad.error));
+    assert.match((await previewOf(h.engine, { text: 'Add the feature', base: 'feat/a b' })).problem ?? '', /"feat\/a b" is not a branch name/);
+    assert.equal((await previewOf(h.engine, { text: 'Add the feature', base: 'release/2.x' })).problem, undefined);
+    await assert.rejects(() => h.engine.start({ text: 'Add the feature', base: 'release/9.x' }), /origin has no branch release\/9\.x in any repo here \(api\)/);
+    assert.ok((await h.engine.startBranches()).includes('release/2.x'), 'the composer offers what origin has');
+
+    const { taskId } = await h.engine.start({ text: 'Add the feature', auto: true, base: 'release/2.x' });
+    assert.equal((await h.engine.svc.state(taskId)).baseBranch, 'release/2.x');
+    const s = await runTask(h.engine, taskId);
+    assert.equal(s.checkpoint && s.checkpoint.id, 'confirm-push', JSON.stringify(h.engine.lastError(taskId)));
+    assert.equal(s.repos[0]!.baseBranch, 'release/2.x', 'over the main the plan named');
+
+    const planner = await h.engine.svc.readTranscript(taskId, (await view.detail(h.engine, taskId)).steps.find((st) => st.agent === 'planner')!.key!);
+    const prompt = text(planner.find((i) => i.type === 'prompt')!.text);
+    const release = git(api, 'rev-parse', 'origin/release/2.x').trim().slice(0, 10);
+    assert.match(prompt, new RegExp(`- api at .+: its task branch starts from origin/release/2\\.x at ${release}; the checkout there is NOT that: on wip, 1 commit the start does not have, 1 commit behind it\\. Read the start with git -C .+ show origin/release/2\\.x:<path>`));
+    assert.match(prompt, /Plan against where each task branch starts, not against the checkout/);
+    assert.match(prompt, /The user chose release\/2\.x for this task to start from/);
+    assert.ok(only(await h.engine.svc.events(taskId), 'note').some((e) => /Planned with api on wip, not where the task branch starts \(origin\/release\/2\.x\)/.test(e.message)));
+
+    const branch = git(api, 'branch', '--show-current').trim();
+    assert.ok(fs.existsSync(path.join(api, 'release.ts')) && !fs.existsSync(path.join(api, 'wip.ts')), 'the task branch is release/2.x, not what was checked out');
+    assert.equal(git(api, 'rev-list', '--count', `origin/release/2.x..${branch}`).trim(), '1');
+    const ctx = await h.engine.checkpointContext(s, s.checkpoint!);
+    assert.deepEqual(ctx.repos!.map((r) => [r.name, r.base]), [['api', 'release/2.x']], 'and its PR goes into it');
   } finally {
     h.hooks.dispose();
   }

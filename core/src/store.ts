@@ -181,6 +181,7 @@ interface StartRequest {
   scenarioName?: string | undefined;
   scenarioLabel?: string | undefined;
   group?: TaskGroup | undefined;
+  baseBranch?: string | undefined;
   instructions?: TaskInstruction[] | undefined;
   auto: boolean;
   pipeline: Pick<Pipeline, 'mode' | 'stages' | 'reviewLoop'>;
@@ -345,6 +346,7 @@ class TaskService {
       ...(scenario !== 'deliver' && { scenario }),
       ...(req.scenarioName && { scenarioName: req.scenarioName, scenarioLabel: req.scenarioLabel }),
       ...(req.group && { group: req.group }),
+      ...(req.baseBranch && { baseBranch: req.baseBranch }),
       ...(req.instructions && req.instructions.length && { instructions: req.instructions }),
       auto: req.auto,
       pipeline: { mode: req.pipeline.mode, stages: req.pipeline.stages, reviewLoop: req.pipeline.reviewLoop },

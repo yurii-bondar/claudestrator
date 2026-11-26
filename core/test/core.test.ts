@@ -802,6 +802,9 @@ test('intake: invocations, sources and acceptance criteria', async () => {
   assert.deepEqual(parseInvocation("Don't break the dice game"), { input: "Don't break the dice game", flags: {}, auto: false });
   assert.deepEqual(parseInvocation('Fix the typo --repos api,web --repos api'), { input: 'Fix the typo', flags: {}, auto: false, repos: ['api', 'web'] });
   assert.throws(() => parseInvocation('Fix it --repos'), /--repos needs a repo name/);
+  assert.deepEqual(parseInvocation('--base release/2.x Fix the typo'), { input: 'Fix the typo', flags: {}, auto: false, base: 'release/2.x' });
+  assert.deepEqual(parseInvocation('Fix the typo --base=hotfix/x'), { input: 'Fix the typo', flags: {}, auto: false, base: 'hotfix/x' });
+  assert.throws(() => parseInvocation('Fix it --base'), /--base names the branch the task starts from/);
   // A flag's name inside the description is a word of it; flags count at the start or the end.
   assert.deepEqual(parseInvocation('Add a --key option to the CLI'), { input: 'Add a --key option to the CLI', flags: {}, auto: false });
   assert.deepEqual(parseInvocation("Support --auto mode in the user's dashboard"), { input: "Support --auto mode in the user's dashboard", flags: {}, auto: false });

@@ -96,7 +96,7 @@ The output decides what Claudestrator does with an agent, never its name:
 - \`verdict\`: read-only review of the combined diff. A blocker or major finding sends the work back to the code and tests steps of the affected repos, for at most \`limits.reviewRounds\` rounds.
 - \`readiness\`, \`audit\`: read-only reports; a scenario of them ends with the report, and nothing goes back to an agent.
 
-A scenario of code or tests agents delivers: Claudestrator itself commits, pushes once the user confirms, and opens draft PRs. A scenario of readiness or audit agents only reports. Do not mix the two kinds in one scenario. Without a \`plan\` agent, a delivery works in the repos the task names (\`--repos api,web\` in its text), else in every configured repo.
+A scenario of code or tests agents delivers: Claudestrator itself commits, pushes once the user confirms, and opens draft PRs. A scenario of readiness or audit agents only reports. Do not mix the two kinds in one scenario. Without a \`plan\` agent, a delivery works in the repos the task names (\`--repos api,web\` in its text), else in every configured repo. A task starts from each repo's base unless its text says \`--base release/2.x\` (where origin has it), and its PRs go into that branch.
 
 ### What an agent hands over
 
