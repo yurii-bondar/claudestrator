@@ -154,6 +154,7 @@ interface Views {
     issue: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
     text: 'M17 6H3M21 12H3M15 18H3',
     dots: 'M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2M19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2M5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2',
+    kebab: 'M12 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2M12 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2',
     link: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
     inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
     zap: 'M13 2 3 14h9l-1 8 10-12h-9z',
@@ -852,6 +853,23 @@ interface Views {
     if (!there.length) return '';
     const options = there.map((l) => `<option value="${esc(l.file)}">${esc(l.label)}</option>`).join('');
     return `<span class="lib-move">${there.length > 1 ? `<select class="input sm" aria-label="Library">${options}</select>` : `<select class="input sm" hidden>${options}</select>`}<button class="btn ghost sm" data-action="to-library" data-kind="${kind}" data-id="${esc(id)}" title="Keep it in a library instead of this project's config.yaml">${icon('folder')}Move to ${there.length > 1 ? 'library' : esc(there[0]!.label)}</button></span>`;
+  }
+
+  /**
+   * A scenario's ⋮ menu: its diagram to look at; to edit (your own and a library's; a built-in one as a copy, which
+   * leaves it as it is); with `use`, a new task with it.
+   */
+  function scenarioMenu(id: string, { use = false }: { use?: boolean } = {}) {
+    const x = scInfo(id);
+    const edit = x.custom
+      ? `<button role="menuitem" data-action="nav-diagram" data-id="${esc(id)}">${icon('edit')}<span class="sc-text"><b>Edit as diagram</b><span class="muted small">Its steps on a canvas, with instructions per step</span></span></button>`
+      : `<button role="menuitem" data-action="diagram-copy" data-id="${esc(id)}">${icon('edit')}<span class="sc-text"><b>Edit a copy as diagram</b><span class="muted small">${esc(`A new scenario with these steps; ${x.label} stays as it is`)}</span></span></button>`;
+    return `<span class="menu-wrap sc-more"><button class="icon-btn" data-action="eff-menu" aria-haspopup="menu" aria-label="${esc(`More for ${x.label}`)}" title="More">${icon('kebab')}</button>
+      <div class="menu sc-more-menu" role="menu">
+        <button role="menuitem" data-action="sc-view-diagram" data-id="${esc(id)}">${icon('eye')}<span class="sc-text"><b>View as diagram</b><span class="muted small">Its steps, blocks and approvals on a canvas, to look at</span></span></button>
+        ${edit}
+        ${use ? `<button role="menuitem" data-action="sc-use" data-id="${esc(id)}">${icon('play')}<span class="sc-text"><b>Use in a new task</b></span></button>` : ''}
+      </div></span>`;
   }
 
   // A new scenario's first agent: only then is it saved, so a stray "New scenario" leaves nothing in config.yaml.
@@ -1601,11 +1619,11 @@ interface Views {
         const x = scInfo(id);
         const agents = views.home.scenarioAgents(id).filter((a) => a.enabled);
         const on = id === sel;
-        return `<button class="sc-entry ${on ? 'selected' : ''}" data-action="sc-edit" data-id="${esc(id)}"${on ? ' aria-current="true"' : ''}>
+        return `<div class="sc-entry-wrap"><button class="sc-entry ${on ? 'selected' : ''}" data-action="sc-edit" data-id="${esc(id)}"${on ? ' aria-current="true"' : ''}>
           <span class="sc-entry-head">${icon(x.icon)}<b>${esc(x.label)}</b>${origin(id)}</span>
           <span class="muted small">${esc(x.hint)}</span>
           <span class="sc-entry-agents">${agents.length ? agents.map((a) => `<span class="${agentColor(a.color)}"><span class="adot"></span></span>`).join('') : ''}<span class="muted small">${agents.length ? plural(agents.length, 'agent') : 'no agents yet'}</span></span>
-        </button>`;
+        </button>${scenarioMenu(id, { use: true })}</div>`;
       };
       const detail = (id: string) => {
         const x = scInfo(id);
@@ -1614,7 +1632,7 @@ interface Views {
             <div class="sc-card-title"><h2>${esc(x.label)}</h2>${origin(id)}<span class="muted small">${esc(x.hint)}</span></div>
             <div class="sc-card-actions">
               <button class="btn sm" data-action="sc-use" data-id="${esc(id)}" title="Start a task with ${esc(x.label)}">${icon('play')}Use in a new task</button>
-              ${x.custom ? `<button class="btn sm" data-action="nav-diagram" data-id="${esc(id)}" title="Its steps on a canvas, with instructions per step">${icon('branch')}Open as diagram</button>` : `<button class="btn sm" data-action="diagram-copy" data-id="${esc(id)}" title="A new scenario with these steps, on a canvas; ${esc(x.label)} stays as it is">${icon('branch')}Open a copy as diagram</button>`}
+              ${scenarioMenu(id)}
               ${c.custom.find((sc) => sc.id === id)?.source === 'project' ? libraryMove('scenario', id, this.libs) : ''}
               ${id === 'deliver' ? '' : `<button class="icon-btn sc-del" data-action="sc-delete" data-id="${esc(id)}" aria-label="Delete ${esc(x.label)}" title="Delete ${esc(x.label)}">${icon('trash')}</button>`}
             </div>
@@ -2077,8 +2095,15 @@ interface Views {
         name?.select();
       }
     },
+    // Any scenario's diagram, to look at: nothing on it changes.
+    'sc-view-diagram': async (el) => {
+      closeMenus();
+      const id = el.dataset.id || '';
+      await go({ name: 'scenario-diagram', scenario: id, view: true });
+    },
     // A built-in scenario's steps as a new diagram: saved as a scenario of its own only on Save.
     'diagram-copy': async (el) => {
+      closeMenus();
       const id = el.dataset.id || '';
       const c = okConfig();
       const labels = new Set(((c && c.custom) || []).map((x) => x.label.toLowerCase()));

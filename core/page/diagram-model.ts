@@ -12,6 +12,8 @@ interface DiagramDraft {
   steps: ScenarioStep[];
   intake: { model?: string; effort?: Effort };
   dirty: boolean;
+  /** Drawn to look at: nothing on it changes, and Save writes nothing. */
+  readonly?: boolean;
 }
 
 /** Where a step added or dropped on an arrow goes, and the blocks it is then in. */

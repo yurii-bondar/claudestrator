@@ -43,6 +43,8 @@ export interface Route {
   taskId?: string | undefined;
   compose?: string;
   scenario?: string | undefined;
+  /** A scenario's diagram to look at, not to edit (`scenario-diagram`). */
+  view?: boolean;
   focus?: string;
   section?: string;
   /** A task's screen opened in a tab of its own ("Open in Tab"). */
