@@ -47,8 +47,7 @@ function diagramPage() {
       custom: { mine: { label: 'Mine', description: 'My own', agents: [{ name: 'developer' }, { name: 'reviewer', approve: {} }], intake: {} } },
     },
   };
-  const attrs: Record<string, string> = {};
-  const el = () => ({ innerHTML: '', style: {} as Record<string, string>, classList: { toggle: (c: string, on: boolean) => void (on ? classes.add(c) : classes.delete(c)), add() {}, remove() {}, contains: () => false }, setAttribute: (k: string, v: string) => void (attrs[k] = v), focus() {}, select() {}, scrollIntoView() {} });
+  const el = () => ({ innerHTML: '', style: {} as Record<string, string>, classList: { toggle: (c: string, on: boolean) => void (on ? classes.add(c) : classes.delete(c)), add() {}, remove() {}, contains: () => false }, setAttribute() {}, focus() {}, select() {}, scrollIntoView() {} });
   const known: Record<string, unknown> = {
     S,
     views,
@@ -80,7 +79,7 @@ function diagramPage() {
     S.route = { name: 'scenario-diagram', ...route };
     await view.enter(S.route);
   };
-  return { view, open, html, S, saved, classes, attrs };
+  return { view, open, html, S, saved, classes };
 }
 
 test('diagram page: a built-in scenario is drawn to look at, by its agents, and nothing on it changes or saves', async () => {
@@ -92,7 +91,7 @@ test('diagram page: a built-in scenario is drawn to look at, by its agents, and 
   assert.match(p.html['dg-head']!, /view only/);
   assert.match(p.html['dg-head']!, /data-action="diagram-copy"[^>]*>.*Edit a copy/, 'a built-in one is edited as a copy');
   assert.doesNotMatch(p.html['dg-head']!, /dg-save/);
-  assert.match(p.html['dg-side']!, /^<fieldset class="dg-view-side" disabled>/, 'the right column only shows');
+  assert.match(p.html['dg-side']!, /<\/div><fieldset class="dg-view-side" disabled>/, 'the right column only shows');
   assert.match(p.html['dg-flow']!, /planner[\s\S]*developer[\s\S]*reviewer/);
 
   p.view.change((x) => void x.steps.pop());
@@ -124,19 +123,27 @@ test("diagram page: your own scenario is drawn as saved; looking at it keeps a d
   assert.ok(!p.classes.has('dg-view'));
 });
 
-test('diagram page: the side panel hides and shows from beside Fit, stays hidden for the next diagram, and comes back for a step picked', async () => {
+test('diagram page: the side panel hides with its own button into a strip at the right edge, stays hidden for the next diagram, and comes back for a step picked or from the strip', async () => {
   const p = diagramPage();
   await p.open({ scenario: 'deliver', view: true });
   assert.ok(!p.classes.has('side-collapsed'));
-  assert.equal(p.attrs['aria-label'], 'Hide the side panel');
+  assert.match(p.html['dg-side']!, /^<div class="dg-side-bar"><button class="icon-btn" data-action="dg-side-toggle"[^>]*aria-label="Hide the side panel"/, 'its button is on the panel, out of the view-only fieldset');
+  assert.doesNotMatch(p.html['dg-side']!, /<fieldset[^>]*>.*dg-side-toggle/s);
   p.view.actions['dg-side-toggle']!({ dataset: {} });
   assert.equal(p.S.ui.dgSideCollapsed, true);
   assert.ok(p.classes.has('side-collapsed'), 'the canvas takes the width');
-  assert.equal(p.attrs['aria-label'], 'Show the side panel');
+  assert.match(p.html['dg-side']!, /^<button class="dg-side-strip" data-action="dg-side-toggle"[^>]*aria-label="Show the side panel"/, 'a strip brings it back');
+  assert.doesNotMatch(p.html['dg-side']!, /Route check|fieldset/);
 
   await p.open({ scenario: 'mine', view: true });
   assert.ok(p.classes.has('side-collapsed'), 'the next diagram opens with it hidden too');
   p.view.actions['dg-select']!({ dataset: { i: '0' } });
   assert.equal(p.S.ui.dgSideCollapsed, false, 'a step picked brings it back');
   assert.ok(!p.classes.has('side-collapsed'));
+  assert.match(p.html['dg-side']!, /dg-side-bar/);
+
+  p.view.actions['dg-side-toggle']!({ dataset: {} });
+  p.view.actions['dg-side-toggle']!({ dataset: {} });
+  assert.equal(p.S.ui.dgSideCollapsed, false, 'and so does the strip');
+  assert.match(p.html['dg-side']!, /dg-side-bar/);
 });

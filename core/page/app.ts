@@ -466,12 +466,12 @@ interface Views {
         <div class="shell">
           <aside class="rail" id="rail" aria-label="Claudestrator">
             <div class="rail-head">
-              <button class="brand" data-action="go-home" data-region="workspace"></button>
+              <button class="brand" data-action="go-home" data-region="workspace" data-tip-when="rail-collapsed"></button>
               <button class="icon-btn rail-fold" data-action="toggle-rail" aria-controls="rail" data-region="rail-fold"></button>
               <button class="icon-btn rail-close" data-action="toggle-nav" aria-label="Close the menu" title="Close the menu">${icon('x')}</button>
             </div>
             <div class="rail-new-row">
-              <button class="btn primary rail-new" data-action="new-task" title="New task (⌘⌥N)">${icon('plus')}<span>New task</span></button>
+              <button class="btn primary rail-new" data-action="new-task" data-tip="New task (⌘⌥N)" data-tip-when="rail-collapsed">${icon('plus')}<span>New task</span></button>
               <button class="btn rail-terminal" data-action="claude-terminal" aria-label="Claude Code in a terminal" title="${esc(TERMINAL_HINT)}">${icon('terminal')}</button>
             </div>
             <nav class="nav" data-region="nav" aria-label="Sections"></nav>
@@ -510,11 +510,57 @@ interface Views {
     const btn = $('.rail-fold');
     if (btn) {
       btn.setAttribute('aria-label', label);
-      btn.setAttribute('title', label);
+      btn.dataset.tip = label;
       btn.setAttribute('aria-expanded', String(!collapsed));
     }
+    hideTip();
     patch('rail-fold', icon('sidebar-left'));
   }
+
+  /**
+   * The tooltip of an element with `data-tip`, shown at once beside it and over everything (fixed, so no scrolling box
+   * cuts it): to its right in the rail, else to its left. `data-tip-when="rail-collapsed"`: only while the rail is
+   * folded, where the element's own label is hidden.
+   */
+  let tipEl: HTMLElement | null = null;
+  function showTip(el: HTMLElement) {
+    const text = el.dataset.tip;
+    const folded = Boolean($('.shell.rail-collapsed')) && window.matchMedia('(min-width: 761px)').matches;
+    if (!text || (el.dataset.tipWhen === 'rail-collapsed' && !folded)) return hideTip();
+    if (!tipEl) {
+      tipEl = document.createElement('div');
+      tipEl.className = 'cs-tip';
+      tipEl.setAttribute('role', 'tooltip');
+      document.body.appendChild(tipEl);
+    }
+    tipEl.textContent = text;
+    tipEl.hidden = false;
+    const r = el.getBoundingClientRect();
+    const t = tipEl.getBoundingClientRect();
+    const right = Boolean(el.closest('.rail'));
+    const left = right ? r.right + 8 : r.left - t.width - 8;
+    tipEl.style.left = `${Math.max(4, Math.min(window.innerWidth - t.width - 4, left))}px`;
+    tipEl.style.top = `${Math.max(4, Math.min(window.innerHeight - t.height - 4, r.top + r.height / 2 - t.height / 2))}px`;
+  }
+  function hideTip() {
+    if (tipEl) tipEl.hidden = true;
+  }
+  const tipOf = (t: EventTarget | null) => (t instanceof Element ? t.closest<HTMLElement>('[data-tip]') : null);
+  document.addEventListener('mouseover', (e) => {
+    const el = tipOf(e.target);
+    if (el) showTip(el);
+    else hideTip();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = tipOf(e.target);
+    if (el) showTip(el);
+    else hideTip();
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (tipOf(e.target) && !tipOf(e.relatedTarget)) hideTip();
+  });
+  document.addEventListener('click', hideTip, true);
+  window.addEventListener('scroll', hideTip, true);
 
   /** Opens or closes the rail as a sheet (narrow panels only; a wide one always shows it). */
   function setNavOpen(open: boolean) {
@@ -538,7 +584,10 @@ interface Views {
         badge = bad ? `<span class="nb err" title="${plural(bad, 'server')} with a problem">${bad}</span>` : o.mcp.connected === o.mcp.total ? '<span class="mcp-dot s-connected" title="All connected"></span>' : '<span class="mcp-dot s-installed" title="Not checked yet"></span>';
       }
       const on = !action && (S.route.name === n.name || (n.name === 'scenarios' && S.route.name === 'scenario-diagram') || (n.name === 'repos' && S.route.name === 'sync'));
-      return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''} title="${esc(n.label)}">${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
+      // Folded, the rail shows the icon alone: its tooltip names the section, with what its dots count.
+      const counts = n.name === 'home' ? [running ? `${running} running` : '', attention ? `${attention} need you` : ''] : n.name === 'mcp' && o && o.mcp && o.mcp.problems ? [`${plural(o.mcp.problems, 'server')} with a problem`] : [];
+      const tip = [n.label, ...counts.filter(Boolean)].join(' · ');
+      return `<button class="nav-item ${on ? 'active' : ''}" ${action ?? `data-action="nav" data-name="${n.name}"`}${on ? ' aria-current="page"' : ''} aria-label="${esc(tip)}" data-tip="${esc(tip)}" data-tip-when="rail-collapsed">${icon(n.icon)}<span class="nav-label">${n.label}</span>${badge}</button>`;
     };
     // Tasks is the root of the tree, an item like the others: a click opens or folds the tasks under it (the logo opens
     // the Tasks page), folded until you open it. With no tasks yet it opens the page.
@@ -552,6 +601,8 @@ interface Views {
     // its path on hover.
     const kind = o && o.rootIsRepo ? 'repo' : 'folder';
     patch('workspace', o && o.root ? `<span class="ws-icon ws-${kind}">${icon(kind)}</span><span class="brand-name" title="${esc(`${o.root}${kind === 'repo' ? ' (a git repository)' : ''}\nOpen the Tasks page`)}">${esc(o.rootName || o.root)}</span>` : o ? `<span class="ws-icon">${icon('folder')}</span><span class="brand-name muted">No folder open</span>` : '');
+    const brand = $('.rail .brand');
+    if (brand) brand.dataset.tip = o && o.root ? `${o.rootName || o.root} · the Tasks page` : 'No folder open';
     patch('task-tabs', taskTabs(o));
     patch('rail-foot', `${railHealth(o && o.health)}${limitsPanel(o && o.limits)}${accountSwitcher(o, Boolean(o && o.health && !o.health.checking && !healthProblem(o.health)))}`);
     renderGlobalPermissions();

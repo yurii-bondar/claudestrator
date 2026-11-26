@@ -75,7 +75,7 @@ interface UiState {
         <div class="dg-layout">
           <div class="dg-canvas" tabindex="-1">
             <div class="dg-bar"><div class="dg-toolbar"><span class="muted small">Add</span><button class="btn ghost sm" data-action="dg-add" data-i="-1" title="Add an agent at the end">${icon('users')}Agent</button><button class="btn ghost sm" data-action="dg-approve-add" data-i="-1" title="The task waits for you after the selected step, or after the last one">${icon('user')}You approve</button><button class="btn ghost sm" data-action="dg-add" data-i="-1" data-kind="parallel" title="A new Parallel at the end: read-only agents that start together">${icon('activity')}Parallel</button><button class="btn ghost sm" data-action="dg-add" data-i="-1" data-kind="branch" title="A new Branch at the end: steps that run only when an earlier result holds">${icon('branch')}Branch</button><button class="btn ghost sm" data-action="dg-loop-on" title="Choose which steps run again, and how many rounds">${icon('refresh')}Loop</button></div>
-            <div class="dg-zoom"><button class="icon-btn" data-action="dg-zoom" data-level="-1" aria-label="Zoom out">−</button><span class="small" data-region="dg-zoom">100%</span><button class="icon-btn" data-action="dg-zoom" data-level="1" aria-label="Zoom in">${icon('plus')}</button><button class="btn ghost sm" data-action="dg-fit">${icon('eye')}Fit</button><button class="icon-btn" data-action="dg-side-toggle" aria-controls="dg-side" data-region="dg-side-toggle"></button></div></div>
+            <div class="dg-zoom"><button class="icon-btn" data-action="dg-zoom" data-level="-1" aria-label="Zoom out">−</button><span class="small" data-region="dg-zoom">100%</span><button class="icon-btn" data-action="dg-zoom" data-level="1" aria-label="Zoom in">${icon('plus')}</button><button class="btn ghost sm" data-action="dg-fit">${icon('eye')}Fit</button></div></div>
             <div class="dg-flow" data-region="dg-flow"></div>
           </div>
           <div class="dg-side" id="dg-side" data-region="dg-side"></div>
@@ -202,8 +202,11 @@ interface UiState {
     },
     renderSide() {
       const d = this.draft();
-      // A disabled fieldset: every field and button in it only shows.
-      patch('dg-side', d.readonly ? `<fieldset class="dg-view-side" disabled>${sideHtml(d)}</fieldset>` : sideHtml(d));
+      // Hidden, the column is a strip at the right edge whose button brings it back.
+      if (S.ui.dgSideCollapsed) return void patch('dg-side', `<button class="dg-side-strip" data-action="dg-side-toggle" aria-controls="dg-side" aria-expanded="false" aria-label="Show the side panel" data-tip="Show the side panel">${icon('sidebar-right')}</button>`);
+      const bar = `<div class="dg-side-bar"><button class="icon-btn" data-action="dg-side-toggle" aria-controls="dg-side" aria-expanded="true" aria-label="Hide the side panel" data-tip="Hide the side panel">${icon('sidebar-right')}</button></div>`;
+      // A disabled fieldset: every field and button in it only shows. The bar stays out of it.
+      patch('dg-side', bar + (d.readonly ? `<fieldset class="dg-view-side" disabled>${sideHtml(d)}</fieldset>` : sideHtml(d)));
     },
     /**
      * Applies a change to the draft and draws it; the right column only when `side` (typing there keeps it), the route
@@ -410,6 +413,7 @@ interface UiState {
         S.ui.dgSideCollapsed = !S.ui.dgSideCollapsed;
         persist();
         sideShown(!S.ui.dgSideCollapsed);
+        v().renderSide();
       },
       'dg-zoom': (el) => setZoom(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(v().zoom) + Number(el.dataset.level)))] ?? 1),
       'dg-fit': () => {
@@ -534,19 +538,11 @@ interface UiState {
   }
 
   /**
-   * Shows or hides the right column; hidden, the canvas takes its width. The choice is kept for every diagram, and the
-   * toggle beside Fit says which it does.
+   * Shows or hides the right column: its own button hides it, and hidden it is a strip at the right edge, so the canvas
+   * takes the width. The choice is kept for every diagram.
    */
   function sideShown(shown: boolean) {
     $('.dg-layout')?.classList.toggle('side-collapsed', !shown);
-    const label = shown ? 'Hide the side panel' : 'Show the side panel';
-    const btn = $('[data-action="dg-side-toggle"]');
-    if (btn) {
-      btn.setAttribute('aria-label', label);
-      btn.setAttribute('title', label);
-      btn.setAttribute('aria-expanded', String(shown));
-    }
-    patch('dg-side-toggle', icon('sidebar-right'));
   }
 
   function select(sel: DgSelection) {
