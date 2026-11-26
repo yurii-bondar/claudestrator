@@ -1,3 +1,9 @@
+## [0.7.0](https://github.com/yurii-bondar/claudestrator/compare/desktop-claudestrator-v0.6.0...desktop-claudestrator-v0.7.0) (2026-11-26)
+
+### Features
+
+* **core:** fold the rail to its icons and hide a diagram's side panel ([023210a](https://github.com/yurii-bondar/claudestrator/commit/023210aec5d0de0f801a4b22c14f420fa40d87bd))
+
 ## [0.6.0](https://github.com/yurii-bondar/claudestrator/compare/desktop-claudestrator-v0.5.0...desktop-claudestrator-v0.6.0) (2026-11-26)
 
 ### Features
