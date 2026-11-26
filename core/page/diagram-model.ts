@@ -99,7 +99,27 @@ const dgModel = (function () {
     if (k === 'gates' && (x === 'pass' || x === 'fail')) return { gates: x };
     return null;
   }
-  const describeWhen = (w: StepWhen) => `${w.on} ${(CONDITIONS[agentOf(w.on)?.output ?? '']?.find(([val]) => val === conditionValue(w.if)) ?? ['', conditionValue(w.if)])[1]}`;
+  /** Whether `c` is one check on the branch's own step: the one kind of condition the side panel edits. */
+  const simpleCondition = (c: Condition) => !('all' in c) && !('any' in c) && !('not' in c) && c.on === undefined;
+  /** The checks of a condition with the step each looks at (its own `on`, else the branch's). */
+  function checksOf(on: string, c: Condition): { on: string; check: Condition }[] {
+    if ('all' in c) return c.all.flatMap((x) => checksOf(on, x));
+    if ('any' in c) return c.any.flatMap((x) => checksOf(on, x));
+    if ('not' in c) return checksOf(on, c.not);
+    return [{ on: c.on ?? on, check: c }];
+  }
+  /** A condition in words, as the engine says it: joined checks with and, or, not. */
+  function describeIf(on: string, c: Condition): string {
+    const part = (x: Condition) => ('all' in x || 'any' in x ? `(${describeIf(on, x)})` : describeIf(on, x));
+    if ('all' in c) return c.all.map(part).join(' and ');
+    if ('any' in c) return c.any.map(part).join(' or ');
+    if ('not' in c) return `not ${part(c.not)}`;
+    const at = c.on ?? on;
+    const { on: _own, ...check } = c;
+    const value = conditionValue(check as Condition);
+    return `${at} ${(CONDITIONS[agentOf(at)?.output ?? '']?.find(([val]) => val === value) ?? ['', value])[1]}`;
+  }
+  const describeWhen = (w: StepWhen) => describeIf(w.on, w.if);
   /** Steps before `at` a branch there can look at: ones that report a result, nearest last. */
   const branchSources = (steps: readonly ScenarioStep[], at: number) => steps.slice(0, at).filter((st) => CONDITIONS[agentOf(st.name)?.output ?? ''] && !st.when);
   function defaultWhen(steps: readonly ScenarioStep[], at: number): StepWhen | null {
@@ -117,8 +137,10 @@ const dgModel = (function () {
       if (st.parallel !== undefined && o && !PARALLEL_OUTPUTS.includes(o)) out.push(`${st.name} writes ${outputLabel(o)}: only reviewers, readiness and audit agents run at once`);
       if (st.when) {
         const first = d.steps.findIndex((x) => sameWhen(x.when, st.when));
-        const src = d.steps.findIndex((x) => x.name === st.when!.on);
-        if (first === i && (src === -1 || src > first)) out.push(`The branch on ${st.when.on} comes before ${st.when.on}: move it after`);
+        for (const on of new Set(checksOf(st.when.on, st.when.if).map((x) => x.on))) {
+          const src = d.steps.findIndex((x) => x.name === on);
+          if (first === i && (src === -1 || src > first)) out.push(`The branch on ${on} comes before ${on}: move it after`);
+        }
       }
     });
     const looped = d.steps.filter((st) => st.loop);
@@ -151,5 +173,5 @@ const dgModel = (function () {
     return k !== loop.end && !(end.group !== undefined && p.stages[k]!.group === end.group);
   }
 
-  return { EFFORTS, REPORTS, PARALLEL_OUTPUTS, asEffort, v, agentOf, outputLabel, kindOf, misfit, fromConfig, fresh, stageOf, sameWhen, blockEnd, placed, blockOf, newParallel, CONDITIONS, conditionValue, conditionOf, describeWhen, branchSources, defaultWhen, problems, approveWhy, inReviewLoop };
+  return { EFFORTS, REPORTS, PARALLEL_OUTPUTS, asEffort, v, agentOf, outputLabel, kindOf, misfit, fromConfig, fresh, stageOf, sameWhen, blockEnd, placed, blockOf, newParallel, CONDITIONS, conditionValue, conditionOf, simpleCondition, describeWhen, branchSources, defaultWhen, problems, approveWhy, inReviewLoop };
 })();

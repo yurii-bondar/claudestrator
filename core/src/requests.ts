@@ -33,6 +33,7 @@ const composerShape = {
   'scenario?': T.str(),
   'group?': T.str(),
   'instructions?': T.arr(T.str(1)),
+  'base?': T.str(),
 };
 const composer = obj(composerShape);
 /** At most a week; null: as long as the task runs. */
@@ -112,6 +113,7 @@ const PARAMS: { [M in keyof Rpc]: Check } = {
   syncResolve: obj({ runId: T.str(1), repo: T.str(1) }),
   preview: composer,
   start: obj({ ...composerShape, 'awake?': awake }),
+  startBranches: none,
   setAwake: obj({ taskId: id, awake: nullable(awake) }),
   checkAwake: none,
   skills: none,

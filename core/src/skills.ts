@@ -96,7 +96,7 @@ The output decides what Claudestrator does with an agent, never its name:
 - \`verdict\`: read-only review of the combined diff. A blocker or major finding sends the work back to the code and tests steps of the affected repos, for at most \`limits.reviewRounds\` rounds.
 - \`readiness\`, \`audit\`: read-only reports; a scenario of them ends with the report, and nothing goes back to an agent.
 
-A scenario of code or tests agents delivers: Claudestrator itself commits, pushes once the user confirms, and opens draft PRs. A scenario of readiness or audit agents only reports. Do not mix the two kinds in one scenario. Without a \`plan\` agent, a delivery works in the repos the task names (\`--repos api,web\` in its text), else in every configured repo.
+A scenario of code or tests agents delivers: Claudestrator itself commits, pushes once the user confirms, and opens draft PRs. A scenario of readiness or audit agents only reports. Do not mix the two kinds in one scenario. Without a \`plan\` agent, a delivery works in the repos the task names (\`--repos api,web\` in its text), else in every configured repo. A task starts from each repo's base unless its text says \`--base release/2.x\` (where origin has it), and its PRs go into that branch.
 
 ### What an agent hands over
 
@@ -131,9 +131,15 @@ scenarios:
           if: { severity: minor }    # or { verdict: approved | changes_requested }, { readiness: ready | not_ready | needs_check }, { audit: critical | high | medium | low }, { gates: pass | fail }
           then: [docs-writer, { approve: Read the docs change }]
           else: []
+      - branch:                 # several results joined: all (and), any (or), not; they nest
+          if:                   # a check names its step with on; without the branch's own on, every check does
+            any:
+              - { on: contract-reviewer, severity: major }
+              - all: [{ on: developer, gates: fail }, { not: { on: tester, gates: pass } }]
+          then: [contract-notes, { approve: Read the notes }]
 ~~~
 
-A step is an agent's name, or \`{ agent, model, effort, instructions }\`: the model and effort it runs with in this scenario, and what it does here after its own instructions (a text, or \`{ file: ./prompts/<scenario>/<agent>.md }\`). The blocks are \`parallel\` (read-only agents at once), \`loop\` (\`steps\` of agents or parallels), \`branch\` (\`on\`, \`if\`, \`then\`, \`else\`) and \`approve\` (\`true\`, or what the user should look at).
+A step is an agent's name, or \`{ agent, model, effort, instructions }\`: the model and effort it runs with in this scenario, and what it does here after its own instructions (a text, or \`{ file: ./prompts/<scenario>/<agent>.md }\`). The blocks are \`parallel\` (read-only agents at once), \`loop\` (\`steps\` of agents or parallels), \`branch\` (\`on\`, \`if\`, \`then\`, \`else\`; \`if\` is one check or checks joined with \`all\`, \`any\` and \`not\`, each check with its own \`on\` when it reads another step. A check of a step that reported nothing, skipped or turned off, is unknown: \`any\` holds on another check that holds, \`all\` fails on one that fails, and what stays unknown does not hold) and \`approve\` (\`true\`, or what the user should look at).
 
 \`readiness\` and \`audit\` are the built-in report scenarios: under them goes a list of agent names. \`<id>: false\` takes a built-in scenario out of the menu.
 

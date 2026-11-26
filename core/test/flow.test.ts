@@ -4,7 +4,7 @@ import test from 'node:test';
 import * as assert from 'node:assert/strict';
 
 import { transition, replay, nextAction, groupPending } from '../src/machine';
-import { describeCondition, evaluate } from '../src/conditions';
+import { describeCondition, evaluate, stepRuns } from '../src/conditions';
 import { flowOf } from '../src/flow';
 import type { FlowItem } from '../src/flow';
 import type { EventBody, OrchEvent, Spec, Stage, StoredPipeline, TaskState } from '../src/types';
@@ -182,6 +182,35 @@ test('branch: conditions read the latest result of the step they name; nothing r
   assert.equal(evaluate(withReports, 'auditor', { audit: 'critical' }), false);
   assert.equal(evaluate(withReports, 'developer', { gates: 'fail' }), true);
   assert.equal(describeCondition('reviewer', { severity: 'major' }), 'reviewer found major or worse');
+});
+
+test('branch: checks joined with all, any and not, each on its own step; one not reported settles nothing alone', () => {
+  const s = task(BRANCHED).state();
+  const withReports = {
+    ...s,
+    reports: [
+      { agent: 'verifier', output: 'readiness' as const, artifact: 'v', value: { summary: '', verdict: 'ready' as const, criteria: [] } },
+      { agent: 'auditor', output: 'audit' as const, artifact: 'a', value: { summary: '', scope: [], findings: [{ severity: 'high' as const, title: 't', problem: 'p' }] } },
+    ],
+  } as TaskState;
+  const high = { audit: 'high' as const };
+  const notReady = { on: 'verifier', readiness: 'not_ready' as const };
+  assert.equal(evaluate(withReports, 'auditor', { any: [high, notReady] }), true);
+  assert.equal(evaluate(withReports, 'auditor', { all: [high, notReady] }), false);
+  assert.equal(evaluate(withReports, 'auditor', { all: [high, { not: notReady }] }), true);
+  assert.equal(evaluate(withReports, 'auditor', { not: { any: [high, notReady] } }), false);
+  // A step that reported nothing: unknown unless the others settle it.
+  const silent = { on: 'reviewer', verdict: 'approved' as const };
+  assert.equal(evaluate(withReports, 'auditor', { any: [high, silent] }), true);
+  assert.equal(evaluate(withReports, 'auditor', { all: [high, silent] }), null);
+  assert.equal(evaluate(withReports, 'auditor', { all: [notReady, silent] }), false);
+  assert.equal(evaluate(withReports, 'auditor', { not: silent }), null);
+  assert.equal(stepRuns(withReports, { on: 'auditor', if: { all: [high, silent] } }), false);
+  assert.equal(stepRuns(withReports, { on: 'auditor', if: { all: [high, silent] }, else: true }), true);
+  assert.equal(
+    describeCondition('auditor', { all: [{ any: [high, notReady] }, { not: { on: 'developer', gates: 'fail' } }] }),
+    "(auditor found high or worse or verifier says not ready) and not developer's checks were left failing",
+  );
 });
 
 test('loop: a scenario\'s own loop runs its rounds, the one outputs make runs the limit', () => {

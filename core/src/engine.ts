@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { loadConfig, configPaths } from './config';
 import { exists, ownTemp, ownTempRoot } from './files';
-import { EFFORTS, REPO_NAME, SCENARIOS } from './protocol';
+import { BRANCH_PATTERN, EFFORTS, REPO_NAME, SCENARIOS } from './protocol';
 import { buildPipeline, fixedFlow, scenarioKind, taskPipeline, fitsScenario, onRepos, reposBeforePlan } from './pipeline';
 import { nextAction, groupPending, runOf, artifactPath, branchName, sameStep, editableFrom, spentOf, stepRepos, unknownRepos, onlyHumanFindings, TASK_FILES, type NextAction, type RunAction } from './machine';
 import { contentAfter, humanFinding, isInstructionsOnly, isProtectedFile, refusedSettings } from './protected';
@@ -16,10 +16,10 @@ import { placeFindings, postPreview, reviewPost, type ReviewPost } from './revie
 import { PR_REVIEW } from './config';
 import type { BitbucketClient } from './bitbucket';
 import { TaskService, type DispatchResult } from './store';
-import { AS_TEXT, exec, getChildEnv, GitRepo, branchAt, taskRepos, prepareRepos, taskDiff, removeWorktrees, worktreeDir, SLOW_GIT_MS } from './git';
+import { AS_TEXT, exec, getChildEnv, GitRepo, branchAt, taskRepos, prepareRepos, taskDiff, removeWorktrees, worktreeDir, atStart, SLOW_GIT_MS } from './git';
 import { runGates, runShell, sandboxNote, withoutCredentials } from './gates';
 import { guardBash, inGitMetadata, inside, outsideLabel } from './guard';
-import { buildAgentPrompt, parseStageReport, lastJsonBlock, withStepInstructions, workReport, workTurn, type StageReport } from './prompt';
+import { buildAgentPrompt, parseStageReport, lastJsonBlock, withStepInstructions, workReport, workTurn, type PromptRepo, type StageReport } from './prompt';
 import { commitSubject, prTitle, prBody } from './pr';
 import { renderReport, jiraText } from './report';
 import type { Live, PermissionRequest, RepoStatus } from './wire';
@@ -33,7 +33,7 @@ import { scanDiff } from './secrets';
 import type { AtlassianClient, Classified, Invocation } from './intake';
 import type { StageSource } from './pipeline';
 import type { RepoGates } from './gates';
-import type { TaskRepo } from './git';
+import type { StartPoint, TaskRepo } from './git';
 import type { BlockedRepo, CheckpointContext, CommentResult, ComposerArgs, Preview, TranscriptItem, UsageItem } from './wire';
 import type { AgentStoppedPayload, Checkpoint, Config, Effort, EventBody, EventOf, GatesStatus, Pipeline, PlanMeta, PlanRepo, ProtectedChange, ProtectedMode, Source, Spec, Step, StepRef, TaskGroup, TaskInstruction, TaskState, WorkReport } from './types';
 
@@ -631,13 +631,69 @@ class Engine extends EventEmitter {
   }
 
   /**
-   * The plan's repos with the group's base branch for each one the plan names none for and whose origin has it: the
-   * tasks of an epic start from its branch, and their PRs go into it.
+   * The plan's repos with the branch each starts from: the one you chose for the task wherever origin has it, whatever
+   * the plan names; else the plan's; else the group's where origin has it (the tasks of an epic start from its branch,
+   * and their PRs go into it); else none, and the repo's base holds.
    */
-  async withGroupBase(state: TaskState, config: Config, repos: PlanRepo[]): Promise<PlanRepo[]> {
-    const base = state.group && state.group.baseBranch;
-    if (!base) return repos;
-    return Promise.all(repos.map(async (r) => (r.baseBranch || !(await new GitRepo(taskRepos(this.workspace, state, config, [r.name])[0]!.checkout).originHas(base)) ? r : { ...r, baseBranch: base })));
+  async withStartBase(state: TaskState, config: Config, repos: PlanRepo[]): Promise<PlanRepo[]> {
+    const chosen = state.baseBranch;
+    const group = state.group && state.group.baseBranch;
+    if (!chosen && !group) return repos;
+    const has = (name: string, branch: string): Promise<boolean> => new GitRepo(taskRepos(this.workspace, state, config, [name])[0]!.checkout).originHas(branch).then((x) => x === true);
+    return Promise.all(
+      repos.map(async (r) => {
+        if (chosen && (await has(r.name, chosen))) return { ...r, baseBranch: chosen };
+        if (r.baseBranch || !group || !(await has(r.name, group))) return r;
+        return { ...r, baseBranch: group };
+      })
+    );
+  }
+
+  /**
+   * Where the task branch of each of these repos would start, and how its checkout stands against that: what a planner
+   * is told, so it plans against the code the task will work on rather than what happens to be checked out. A repo a
+   * plan already gave a base keeps it.
+   */
+  async startPoints(state: TaskState, config: Config, names: string[]): Promise<Map<string, { base: string; start: StartPoint | null }>> {
+    const planned = await this.withStartBase(state, config, names.map((name) => state.repos.find((r) => r.name === name) ?? { name, mode: 'full' as const }));
+    const out = new Map<string, { base: string; start: StartPoint | null }>();
+    await Promise.all(
+      planned.map(async (r) => {
+        const [repo] = taskRepos(this.workspace, { ...state, repos: planned }, config, [r.name]);
+        out.set(r.name, { base: repo!.base, start: await new GitRepo(repo!.checkout).startPoint(repo!.base) });
+      })
+    );
+    return out;
+  }
+
+  /**
+   * The branches origin has in the configured repos, as last fetched (nothing is fetched for it): the usual bases
+   * first, then the rest by name.
+   */
+  async startBranches(): Promise<string[]> {
+    const config = await this.config();
+    const names = new Set<string>();
+    for (const r of Object.values(config.repos)) {
+      const out = await new GitRepo(path.resolve(this.workspace, r.path)).git('for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes/origin');
+      for (const n of out.stdout.split('\n').map((x) => x.trim())) if (n && n !== 'HEAD') names.add(n);
+    }
+    const first = [...new Set([config.baseBranch, ...Object.values(config.repos).map((r) => r.baseBranch), 'main', 'master', 'develop'])].filter((n) => names.has(n));
+    return [...first, ...[...names].filter((n) => !first.includes(n)).sort()].slice(0, 500);
+  }
+
+  /**
+   * The start branch a task asks for, checked: a branch name, and one origin has in at least one configured repo
+   * (each of the others starts from its own base). One no origin could be asked about is let through.
+   */
+  async checkedBase(config: Config, base: string | undefined, { origin = true }: { origin?: boolean } = {}): Promise<string | undefined> {
+    const b = base && base.trim();
+    if (!b) return undefined;
+    if (!BRANCH_PATTERN.test(b)) throw new EngineError('bad_base', `"${b}" is not a branch name (e.g. main or release/2.x)`);
+    const repos = Object.values(config.repos);
+    if (!repos.length || !origin) return b;
+    const has = await Promise.all(repos.map((r) => new GitRepo(path.resolve(this.workspace, r.path)).originHas(b)));
+    if (has.every((x) => x === false)) throw new EngineError('bad_base', `origin has no branch ${b} in any repo here (${repos.map((r) => r.name).join(', ')}); name one it has, or leave it empty to start from each repo's base`);
+    return b;
   }
 
   /** Whether a step of the task has worked in its repos already (so they are on its branch). */
@@ -653,13 +709,13 @@ class Engine extends EventEmitter {
     const r = this.reposWithoutPlan(parseInvocation(s.input).repos, config, s.pipeline);
     if (!r.ok) throw new EngineError('repos_required', r.error);
     const plan = planFromTicket(spec, s.source.kind === 'text' ? s.source.text : s.input, r.repos);
-    plan.repos = await this.withGroupBase(s, config, plan.repos);
+    plan.repos = await this.withStartBase(s, config, plan.repos);
     for (let n = 2; (await this.branchTaken(s, config, branchName({ ...s, plan })!, r.repos)).length; n++) plan.slug = `${planFromTicket(spec, '', []).slug}-${n}`;
     return plan;
   }
 
   /** What a composer input would do, without creating anything. */
-  async preview({ text = '', auto = false, no = [], key, effort = {}, scenario }: ComposerArgs = {}): Promise<Preview> {
+  async preview({ text = '', auto = false, no = [], key, effort = {}, scenario, base }: ComposerArgs = {}): Promise<Preview> {
     let inv: Invocation;
     try {
       inv = parseInvocation(text);
@@ -696,6 +752,15 @@ class Engine extends EventEmitter {
     if (pipeline.stages.length === 0) problem = problem || (sc.name === 'deliver' ? 'every agent is switched off' : `no agent is on for the ${sc.label || sc.name} scenario`);
     const repos = this.reposWithoutPlan(inv.repos, r.config, pipeline);
     if (!repos.ok) problem = problem || repos.error;
+    if (!problem && (base || inv.base)) {
+      try {
+        if (source.kind === 'pr') throw new EngineError('bad_base', "a pull request's review reads its own branches; leave the start branch out");
+        // Only the name while you type: asking origin is for Start.
+        await this.checkedBase(r.config, base || inv.base, { origin: false });
+      } catch (e) {
+        problem = (e as Error).message;
+      }
+    }
     let taskEffort: Record<string, string> = {};
     try {
       taskEffort = this.effortFor(r.config, pipeline, inv.effort, effort, this.scenarioDefaults(r.config, sc.name).effort);
@@ -743,7 +808,7 @@ class Engine extends EventEmitter {
    * Creates a task, not started, from what the composer says; `extrasOf` gives its group and instructions: the ones the
    * composer picked, or (a ticket's sub-task) its parent's, with the sub-task's key and summary for a title.
    */
-  async create({ text = '', auto = false, no = [], key, effort = {}, scenario }: ComposerArgs, extrasOf: (config: Config) => { group?: TaskGroup; instructions: TaskInstruction[]; title?: string }): Promise<{ taskId: string; created: boolean }> {
+  async create({ text = '', auto = false, no = [], key, effort = {}, scenario, base }: ComposerArgs, extrasOf: (config: Config) => { group?: TaskGroup; instructions: TaskInstruction[]; title?: string }): Promise<{ taskId: string; created: boolean }> {
     const inv = parseInvocation(text);
     if (!inv.input && !(key || inv.key)) throw new EngineError('no_input', 'Describe the task, or paste a Jira key, an issue (#12) or a link to an issue or a Confluence page');
     const flags = { no: [...new Set([...(inv.flags.no || []), ...no])], ...(inv.flags.only && { only: inv.flags.only }) };
@@ -762,19 +827,22 @@ class Engine extends EventEmitter {
     if (pipeline.stages.length === 0) throw new EngineError('empty_pipeline', sc.name === 'deliver' ? 'Every agent is switched off; turn at least one on' : `No agent is on for the ${sc.label || sc.name} scenario; add one or turn one on in Agents`);
     const repos = this.reposWithoutPlan(inv.repos, config, pipeline);
     if (!repos.ok) throw new EngineError('repos_required', repos.error);
+    if ((base || inv.base) && source.kind === 'pr') throw new EngineError('bad_base', "a pull request's review reads its own branches; leave the start branch out");
+    const baseBranch = await this.checkedBase(config, base || inv.base);
     const defaults = this.scenarioDefaults(config, sc.name);
     const taskEffort = this.effortFor(config, pipeline, inv.effort, effort, defaults.effort);
     const inPipeline = ([name]: [string, string]): boolean => pipeline.stages.some((st) => st.agent === name);
     const taskModel: Record<string, string> = Object.fromEntries(Object.entries(defaults.model).filter(inPipeline));
     const stepInstructions: Record<string, string> = Object.fromEntries(Object.entries(defaults.instructions).filter(inPipeline));
     const extras = extrasOf(config);
-    const extra = [...(no.length ? [`--no ${no.join(',')}`] : []), ...(auto && !inv.auto ? ['--auto'] : []), ...(scenario && scenario !== 'auto' && !inv.scenario ? [`--scenario ${scenario}`] : [])].join(' ');
+    const extra = [...(no.length ? [`--no ${no.join(',')}`] : []), ...(auto && !inv.auto ? ['--auto'] : []), ...(scenario && scenario !== 'auto' && !inv.scenario ? [`--scenario ${scenario}`] : []), ...(baseBranch && !inv.base ? [`--base ${baseBranch}`] : [])].join(' ');
     const started = await this.svc.start({
       input: extra ? `${text.trim()} ${extra}` : text.trim(),
       source,
       scenario: sc.scenario,
       ...(sc.label && { scenarioName: sc.name, scenarioLabel: sc.label }),
       ...extras,
+      ...(baseBranch && { baseBranch }),
       auto: isAuto,
       pipeline,
       config,
@@ -1013,7 +1081,7 @@ class Engine extends EventEmitter {
     const children: string[] = [];
     for (const c of open) {
       try {
-        const r = await this.create({ key: c.key, auto: s.auto, no, effort: s.effort, scenario: s.scenarioName ?? s.scenario }, () => ({ group, instructions: s.instructions, title: `${c.key} ${c.summary}`.trim() }));
+        const r = await this.create({ key: c.key, auto: s.auto, no, effort: s.effort, scenario: s.scenarioName ?? s.scenario, ...(s.baseBranch && { base: s.baseBranch }) }, () => ({ group, instructions: s.instructions, title: `${c.key} ${c.summary}`.trim() }));
         children.push(r.taskId);
       } catch (e) {
         this.log('warn', `${c.key} did not become a task: ${(e as Error).message}`, s.taskId);
@@ -1568,7 +1636,20 @@ class Engine extends EventEmitter {
     const pr = state.spec && state.spec.pr;
     // A pull request's reviewers read its repo where its head is checked out.
     const prRepo = pr && config.repos[pr.repo];
-    const readRepos = REPORT_OUTPUTS.has(stage.output) || stage.output === 'plan' ? Object.values(config.repos).map((r) => ({ name: r.name, dir: path.resolve(this.workspace, r.path), baseBranch: r.baseBranch, ...(r.role && { role: r.role }) })) : pr ? [{ name: pr.repo, dir: worktreeDir(this.workspace, taskId, pr.repo), baseBranch: pr.base, ...(prRepo && prRepo.role && { role: prRepo.role }) }] : [];
+    const readRepos: PromptRepo[] = REPORT_OUTPUTS.has(stage.output) || stage.output === 'plan' ? Object.values(config.repos).map((r) => ({ name: r.name, dir: path.resolve(this.workspace, r.path), baseBranch: r.baseBranch, ...(r.role && { role: r.role }) })) : pr ? [{ name: pr.repo, dir: worktreeDir(this.workspace, taskId, pr.repo), baseBranch: pr.base, ...(prRepo && prRepo.role && { role: prRepo.role }) }] : [];
+    // A planner before the task works in its repos reads them as they are checked out, and the task branch starts from
+    // origin's base later: it is told where that is and whether the checkout is it. After the work, the checkouts are
+    // the task's (branch mode) and that is what a planner reads.
+    if (stage.output === 'plan' && readRepos.length && !pr && !(await this.workedOnRepos(state))) {
+      live({ phase: 'preparing', step, text: 'Fetching where the task branches start' });
+      const points = await this.startPoints(state, config, readRepos.map((r) => r.name));
+      for (const r of readRepos) {
+        const p = points.get(r.name);
+        if (p) Object.assign(r, { baseBranch: p.base, start: p.start });
+      }
+      const apart = readRepos.filter((r) => r.start && !atStart(r.start));
+      if (apart.length) await this.svc.record(taskId, { type: 'note', message: `Planned with ${apart.map((r) => `${r.name} on ${r.start!.branch || 'a detached HEAD'}`).join(', ')}, not where the task branch starts (${apart.map((r) => r.start!.ref).filter((x, i, a) => a.indexOf(x) === i).join(', ')}); the planner was told to read the start` });
+    }
     let prsPath: string | undefined;
     if (stage.output === 'readiness' && (s.source.kind === 'jira' || s.source.kind === 'linear') && readRepos.length) {
       live({ phase: 'preparing', step, text: `Listing the PRs and MRs for ${s.source.key}` });
@@ -1780,11 +1861,12 @@ class Engine extends EventEmitter {
           const known = state.knownRepos.length ? `name them as configured: ${state.knownRepos.join(', ')}` : 'name them by their folders in the workspace';
           return { ok: false, error: `the plan names repos this workspace does not have (${unknown.join(', ')}); ${known}` };
         }
+        // The start you chose holds where origin has it; a repo the plan names no base for starts from the group's
+        // branch, where origin has it.
+        if (!state.plan || !(await this.workedOnRepos(state))) r.plan.repos = await this.withStartBase(state, config, r.plan.repos);
         // A base the planner names is one origin has: the branch starts from it, and the PR goes into it.
         const noBase = await this.basesMissing(state, config, r.plan.repos);
         if (noBase.length) return { ok: false, error: `origin has no branch ${noBase.map((x) => `${x.baseBranch} (in ${x.name})`).join(', ')}; name a branch origin has as baseBranch, or leave it out to start from the repo's base` };
-        // A repo the plan names no base for starts from the group's branch, where origin has it.
-        if (!state.plan || !(await this.workedOnRepos(state))) r.plan.repos = await this.withGroupBase(state, config, r.plan.repos);
         // A plan after the task has worked in its repos (a second planner, one in the review loop) keeps the branch that
         // work is on: a new slug would leave the work behind on the old one, uncommitted. So does each repo's base, which
         // that branch was made from.

@@ -14,6 +14,9 @@ interface HomeView extends View {
   detected: string | null;
   /** Whether a start is on its way to the extension. */
   starting: boolean;
+  /** The branches the start field offers, once read. */
+  startBranches: string[] | null;
+  loadStartBranches(): Promise<void>;
   render(): void;
   tasksHtml(tasks: Card[]): string;
   renderComposer(): void;
@@ -295,7 +298,7 @@ interface Views {
   const S: AppState = {
     route: saved.route || { name: 'home' },
     overview: null,
-    draft: { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null, ...(saved.draft || {}) },
+    draft: { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null, base: '', ...(saved.draft || {}) },
     ui: saved.ui || {},
   };
   /** The config when it is valid; the dashboard offers nothing to change in a broken one. */
@@ -1123,6 +1126,7 @@ interface Views {
   views.home = {
     detected: null,
     starting: false,
+    startBranches: null,
     async enter(route) {
       if (route.compose !== undefined && route.compose !== '') S.draft.text = route.compose;
       if (route.scenario) S.draft.scenario = route.scenario;
@@ -1239,17 +1243,29 @@ interface Views {
         <div class="composer-row">
           <div class="agents-chips" data-region="agent-chips"></div>
         </div>
-        <details class="composer-more" ${S.draft.key ? 'open' : ''}>
-          <summary>More options</summary>
+        <details class="composer-more" ${S.draft.key || S.draft.base ? 'open' : ''}>
+          <summary>More options${S.draft.base ? ` <span class="chip mono">${icon('branch')}from ${esc(S.draft.base)}</span>` : ''}</summary>
           <div class="field-row">
             <label class="field"><span>Task key <span class="muted">(optional)</span></span><input id="composer-key" class="input" placeholder="e.g. PROJ-123, or any id" value="${esc(S.draft.key)}" spellcheck="false"></label>
             <p class="muted small">By default a Jira issue keeps its key, a Confluence page becomes DOC-&lt;id&gt; and a description gets a time-based id. Starting a task that already exists continues it.</p>
           </div>
+          <div class="field-row">
+            <label class="field"><span>Start from branch <span class="muted">(optional)</span></span><input id="composer-base" class="input mono" list="composer-base-list" placeholder="each repo's base (main)" value="${esc(S.draft.base)}" spellcheck="false" autocomplete="off"><datalist id="composer-base-list"></datalist></label>
+            <p class="muted small">The task's branches start from it and its PRs go into it, in each repo where origin has it; the others start from their own base. The planner reads the code there, whatever is checked out. <code>--base release/2.x</code> in the text says the same.</p>
+          </div>
         </details>`;
+      this.loadStartBranches();
       this.renderAgentsChips();
       this.renderExtras();
       this.renderAwake();
       autosize($('#composer-text'));
+    },
+    /** The branches the start field offers, once per composer: origin's, as last fetched. */
+    async loadStartBranches() {
+      const list = $('#composer-base-list');
+      if (!list) return;
+      if (!this.startBranches) this.startBranches = await call('startBranches').catch(() => [] as string[]);
+      list.innerHTML = this.startBranches.map((b) => `<option value="${esc(b)}"></option>`).join('');
     },
     /** The scenario the task will run: your pick (while it exists), else what the words suggest (from the last preview). */
     scenario() {
@@ -1413,7 +1429,7 @@ interface Views {
         if (!text && !S.draft.key) return patch('detect', `<span class="muted small">${window.__csHost === 'desktop' ? 'Tip: File → New Task (⌘N, Ctrl+N elsewhere) brings you here from any screen.' : 'Tip: select text in an editor and run “Claudestrator: Start a Task from Selection”.'}</span>`);
         let p: Preview;
         try {
-          p = await call('preview', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: S.draft.scenario });
+          p = await call('preview', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: S.draft.scenario, base: S.draft.base || undefined });
         } catch (e) {
           return patch('detect', `<span class="detect error">${icon('alert')}${esc(e instanceof Error ? e.message : String(e))}</span>`);
         }
@@ -1490,14 +1506,14 @@ interface Views {
       const instructions = S.draft.instructions.filter((id) => c && c.instructions.some((x) => x.id === id));
       let r: Awaited<ReturnType<typeof attempt<'start'>>>;
       try {
-        r = await attempt('start', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: this.scenario(), group, instructions, ...(S.draft.awake && { awake: S.draft.awake }) });
+        r = await attempt('start', { text: S.draft.text, auto: S.draft.auto, no: S.draft.no, key: S.draft.key || undefined, effort: S.draft.effort, scenario: this.scenario(), group, instructions, base: S.draft.base || undefined, ...(S.draft.awake && { awake: S.draft.awake }) });
       } finally {
         this.starting = false;
         btn.disabled = false;
         btn.classList.remove('busy');
       }
       if (!r) return;
-      S.draft = { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null };
+      S.draft = { text: '', no: [], auto: false, key: '', effort: {}, scenario: 'auto', group: '', instructions: [], awake: null, base: '' };
       this.detected = null;
       persist();
       toast(r.created ? `Started ${r.taskId}` : `Continuing ${r.taskId}`, 'ok');
@@ -2373,7 +2389,7 @@ interface Views {
       t.click();
     }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.repeat) {
-      if (t && (t.id === 'composer-text' || t.id === 'composer-key')) {
+      if (t && (t.id === 'composer-text' || t.id === 'composer-key' || t.id === 'composer-base')) {
         e.preventDefault();
         views.home.start();
       } else if (current && current.onSubmit) current.onSubmit(e);
@@ -2392,6 +2408,12 @@ interface Views {
     }
     if (t.id === 'composer-key') {
       S.draft.key = f.value.trim();
+      persist();
+      views.home.preview();
+      return;
+    }
+    if (t.id === 'composer-base') {
+      S.draft.base = f.value.trim();
       persist();
       views.home.preview();
       return;

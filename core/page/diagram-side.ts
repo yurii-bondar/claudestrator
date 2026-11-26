@@ -4,7 +4,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const dgSide = (function () {
   const { icon, esc, plural, agentColor, modelChoices, EFFORT_LABEL } = window.CS;
-  const { v, agentOf, outputLabel, kindOf, misfit, stageOf, sameWhen, REPORTS, EFFORTS, CONDITIONS, conditionValue, describeWhen, branchSources, problems, inReviewLoop } = dgModel;
+  const { v, agentOf, outputLabel, kindOf, misfit, stageOf, sameWhen, REPORTS, EFFORTS, CONDITIONS, conditionValue, simpleCondition, describeWhen, branchSources, problems, inReviewLoop } = dgModel;
 
   function modelOptions(own: string | undefined, fallback: string) {
     const c = v().c;
@@ -141,10 +141,11 @@ const dgSide = (function () {
       const out = agentOf(w.on)?.output ?? '';
       const choices = CONDITIONS[out] ?? [];
       return `<section class="card dg-side-card">${head('Branch', 'branch', 'Its steps run only when a result of a step before it holds; the otherwise steps when it does not. The task decides from what the step reported, so a task shows which way it went.')}
-        <div class="field-row two">
+        ${simpleCondition(w.if) ? `<div class="field-row two">
           <label class="field"><span>On</span><select class="input" data-change="dg-branch-on" data-i="${i}">${sources.map((x) => `<option value="${esc(x.name)}" ${x.name === w.on ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}${sources.some((x) => x.name === w.on) ? '' : `<option selected>${esc(w.on)}</option>`}</select></label>
           <label class="field"><span>When it</span><select class="input" data-change="dg-branch-if" data-i="${i}">${choices.map(([val, label]) => `<option value="${val}" ${val === conditionValue(w.if) ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
-        </div>
+        </div>` : `<p class="small"><b>When</b> ${esc(describeWhen(w))}</p>
+        <p class="muted small">Checks joined with all, any and not (or on other steps) are edited in config.yaml; the diagram keeps them as they are.</p>`}
         <h4>Then</h4><div class="dg-members">${members((x) => sameWhen(x.when, w) && !x.when!.else) || '<span class="muted small">nothing: + in its column adds a step</span>'}</div>
         <h4>Otherwise</h4><div class="dg-members">${members((x) => sameWhen(x.when, w) && Boolean(x.when!.else)) || '<span class="muted small">nothing: the task goes on</span>'}</div>
         <div class="row dg-remove"><button class="btn ghost sm" data-action="dg-unblock" data-kind="branch" data-i="${i}">${icon('x')}Remove the branch: its steps always run</button></div>

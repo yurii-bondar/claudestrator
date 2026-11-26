@@ -5,8 +5,8 @@ import type { Run } from './forge';
 import type { BitbucketClient } from './bitbucket';
 import type { ChildIssue, PlanMeta, Source, Spec } from './types';
 
-const FLAG_RE = /(^|\s)--(auto|no|only|key|effort|scenario|repos)(?=[\s=]|$)/;
-import { SCENARIOS as SCENARIO_NAMES, SCENARIO_ID } from './protocol';
+const FLAG_RE = /(^|\s)--(auto|no|only|key|effort|scenario|repos|base)(?=[\s=]|$)/;
+import { BRANCH_PATTERN, SCENARIOS as SCENARIO_NAMES, SCENARIO_ID } from './protocol';
 
 /** What the user typed, split into the description and the flags. */
 interface Invocation {
@@ -18,9 +18,11 @@ interface Invocation {
   effort?: Record<string, string>;
   /** `--repos api,web`: the repos of a pipeline without a plan stage, which has no planner to name them. */
   repos?: string[];
+  /** `--base release/2.x`: the branch the task's branches start from (and its PRs go into), in each repo where origin has it. */
+  base?: string;
 }
 
-const FLAG = /^--(auto|no|only|key|effort|scenario|repos)(=|$)/;
+const FLAG = /^--(auto|no|only|key|effort|scenario|repos|base)(=|$)/;
 
 /** How many words from `i` a flag takes: itself, and its value unless it is --auto or written `--flag=value`. 0: no flag. */
 function flagSpan(words: string[], i: number): number {
@@ -31,7 +33,7 @@ function flagSpan(words: string[], i: number): number {
 
 /**
  * Parses `[flags] <input> [flags]`: `--auto`, `--no X`, `--only X,Y`, `--key=K`, `--effort high` or
- * `--effort developer=high,tester=low`, `--scenario readiness`, `--repos api,web`. Flags count only in a block at the start or the end
+ * `--effort developer=high,tester=low`, `--scenario readiness`, `--repos api,web`, `--base release/2.x`. Flags count only in a block at the start or the end
  * of the text; in between they are words of the description ("Add a --key option to the CLI"), which is kept verbatim,
  * line breaks and apostrophes included. `effort` comes back as `{ '*': level, <agent>: level }`; `*` means every agent.
  */
@@ -59,6 +61,7 @@ function parseInvocation(line: string): Invocation {
   let auto = false;
   let key: string | undefined;
   let scenario: string | undefined;
+  let base: string | undefined;
   const effort: Record<string, string> = {};
   const repos: string[] = [];
   const list = (v: string | undefined, flag: string): string[] => {
@@ -99,9 +102,13 @@ function parseInvocation(line: string): Invocation {
         scenario = inline ?? tokens[++i];
         if (!SCENARIO_ID.test(scenario || '')) throw new Error(`--scenario names a scenario, e.g. ${SCENARIO_NAMES.join(', ')} or one of your own`);
         break;
+      case '--base':
+        base = inline ?? tokens[++i];
+        if (!base || !BRANCH_PATTERN.test(base)) throw new Error('--base names the branch the task starts from, e.g. --base release/2.x');
+        break;
     }
   }
-  return { input, flags: { ...(no.length && { no }), ...(only.length && { only }) }, auto, ...(key && { key }), ...(scenario && { scenario }), ...(Object.keys(effort).length && { effort }), ...(repos.length && { repos: [...new Set(repos)] }) };
+  return { input, flags: { ...(no.length && { no }), ...(only.length && { only }) }, auto, ...(key && { key }), ...(scenario && { scenario }), ...(Object.keys(effort).length && { effort }), ...(repos.length && { repos: [...new Set(repos)] }), ...(base && { base }) };
 }
 
 const AUDIT_WORDS = /аудит|\baudit|\bвузьк\w* місц|bottleneck/i;

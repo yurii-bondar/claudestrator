@@ -1,7 +1,7 @@
 // The steps of a custom scenario as config.yaml writes them (agents, and blocks of them: parallel, branch, loop) and as
 // the rest of Claudestrator reads them: one list of agent steps, each marked with the block it is in.
 
-import { sameBranch } from './conditions';
+import { checksOf, sameBranch } from './conditions';
 import type { Condition, Effort, StepWhen } from './types';
 
 /** An agent step: its name, or the agent with what it runs with and does in this scenario. */
@@ -14,9 +14,12 @@ interface ParallelLayer {
 interface ApproveLayer {
   approve: string | true;
 }
-/** Steps that run only when the result of `on` meets `if` (`then`), or only when it does not (`else`). */
+/**
+ * Steps that run only when `if` holds (`then`), or only when it does not (`else`). `on` is the step its checks look at
+ * unless they name their own; without it, every one does.
+ */
 interface BranchLayer {
-  branch: { on: string; if: Condition; then?: (AgentStepLayer | ApproveLayer)[]; else?: (AgentStepLayer | ApproveLayer)[] };
+  branch: { on?: string; if: Condition; then?: (AgentStepLayer | ApproveLayer)[]; else?: (AgentStepLayer | ApproveLayer)[] };
 }
 /** Steps that run again until the reviewers at their end approve, up to `rounds` times. */
 interface LoopLayer {
@@ -61,7 +64,9 @@ function flattenSteps(layers: readonly ScenarioStepLayer[]): FlatStep[] {
       const loop = s.loop.rounds !== undefined ? { rounds: s.loop.rounds } : {};
       for (const b of s.loop.steps) plain(b, { loop });
     } else if (isBranch(s)) {
-      const { on, if: cond } = s.branch;
+      const { if: cond } = s.branch;
+      // Without its own, the branch is on the step of its first check (config refuses a check that names none).
+      const on = s.branch.on ?? checksOf('', cond)[0]?.on ?? '';
       for (const [arm, when] of [[s.branch.then, { on, if: cond }], [s.branch.else, { on, if: cond, else: true as const }]] as const) {
         const from = out.length;
         for (const t of arm ?? []) {

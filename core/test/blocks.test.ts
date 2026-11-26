@@ -145,6 +145,44 @@ test('blocks: what a scenario may not do with them is an error of that scenario'
   assert.match(validateConfigLayer({ scenarios: { s: { label: 'S', agents: [{ parallel: ['reviewer'] }] } } }).join(), /at least 2/);
 });
 
+test('blocks: a branch joins checks of several steps with all, any and not, and writes them back as they were', async () => {
+  const home = tmp('cs-blocks-h-');
+  const yaml = `${AGENTS}scenarios:
+  s:
+    label: S
+    agents:
+      - developer
+      - parallel: [reviewer, security-reviewer]
+      - branch:
+          if:
+            any:
+              - { on: security-reviewer, severity: major }
+              - all: [{ on: reviewer, verdict: changes_requested }, { not: { on: developer, gates: pass } }]
+          then: [security-fixer]
+`;
+  const r = await config.loadConfig({ workspace: workspace(yaml), home });
+  assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
+  const fixer = r.config.custom.s!.agents.find((st) => st.name === 'security-fixer')!;
+  assert.equal(fixer.when!.on, 'security-reviewer', 'a branch without on is on its first check\'s step');
+  const layers: ScenarioStepLayer[] = [{ branch: { if: { any: [{ on: 'reviewer', verdict: 'approved' }, { on: 'auditor', audit: 'high' }] }, then: ['a'] } }];
+  assert.deepEqual(nestSteps(flattenSteps(layers)), [{ branch: { on: 'reviewer', if: { any: [{ on: 'reviewer', verdict: 'approved' }, { on: 'auditor', audit: 'high' }] }, then: ['a'] } }]);
+
+  const errors = async (steps: string): Promise<string[]> => {
+    const x = await config.loadConfig({ workspace: workspace(`${AGENTS}scenarios:\n  s:\n    label: S\n    agents:\n${steps}`), home });
+    return x.ok ? [] : x.errors.map((e) => e.code);
+  };
+  // Every check is held to its own step: before the branch, and of the output it reads.
+  assert.deepEqual(await errors('      - reviewer\n      - branch: { if: { any: [{ on: reviewer, verdict: approved }, { on: security-reviewer, verdict: approved }] }, then: [security-fixer] }\n      - security-reviewer\n'), ['branch_source']);
+  assert.deepEqual(await errors('      - developer\n      - reviewer\n      - branch: { on: reviewer, if: { all: [{ verdict: approved }, { on: developer, audit: high }] }, then: [security-fixer] }\n'), ['branch_condition']);
+  const invalid = (cond: unknown, on?: string): string => validateConfigLayer({ scenarios: { s: { label: 'S', agents: [{ branch: { ...(on && { on }), if: cond, then: ['a'] } }] } } }).join();
+  assert.match(invalid({ verdict: 'approved' }), /names no step/);
+  assert.match(invalid({ any: [{ on: 'r', verdict: 'approved' }, { verdict: 'approved' }] }), /any\[1\]: names no step/);
+  assert.equal(invalid({ any: [{ verdict: 'approved' }, { on: 'r', audit: 'low' }] }, 'r'), '');
+  assert.match(invalid({ all: [{ verdict: 'approved' }] }, 'r'), /at least 2/);
+  assert.match(invalid({ not: { mood: 'good' } }, 'r'), /expected one of verdict, severity, readiness, audit, gates, all, any, not/);
+  assert.match(invalid({ verdict: 'approved', audit: 'low' }, 'r'), /expected one of/);
+});
+
 test('blocks: a Parallel left with one agent runs it alone, a branch on a step that does not run takes its other arm', async () => {
   const home = tmp('cs-blocks-h-');
   const r = await config.loadConfig({ workspace: workspace(`${SHIP.replace('security-reviewer: { extends: reviewer,', 'security-reviewer: { extends: reviewer, enabled: false,')}`), home });

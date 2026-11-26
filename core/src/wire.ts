@@ -543,6 +543,8 @@ export interface ComposerArgs {
   group?: string | undefined;
   /** The ids of the instructions every agent of the task gets. */
   instructions?: string[] | undefined;
+  /** The branch the task starts from, in each repo where origin has it (`--base` in the text says the same); empty: each repo's base. */
+  base?: string | undefined;
 }
 
 /** What a composer input would do, without creating anything. */
@@ -1065,6 +1067,8 @@ export interface Rpc {
   preview: { params: ComposerArgs; result: Preview };
   /** `awake`: the task keeps the computer awake while it runs. */
   start: { params: ComposerArgs & { awake?: AwakeChoice }; result: { taskId: string; created: boolean } };
+  /** The branches origin has in the configured repos, as last fetched: what the composer offers to start a task from. */
+  startBranches: { params: void; result: string[] };
   /** Keeps the computer awake while the task runs, or stops (null). */
   setAwake: { params: { taskId: string; awake: AwakeChoice | null }; result: Void };
   skills: { params: void; result: SkillView[] };

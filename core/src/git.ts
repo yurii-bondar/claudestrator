@@ -236,6 +236,27 @@ class GitRepo {
     return 'HEAD';
   }
 
+  /**
+   * Where a task branch from `base` would start, and how the checkout stands against it: origin's `base` after a fetch
+   * (prepareRepos branches from it), else as last fetched, else the local branch. Null outside a repository, or when
+   * the repo has no such branch at all.
+   */
+  async startPoint(base: string): Promise<StartPoint | null> {
+    if (!(await this.isRepo())) return null;
+    const fetched = (await this.gitWith({ timeoutMs: 60000 }, 'fetch', '--no-tags', 'origin', base)).code === 0;
+    const sha = async (ref: string): Promise<string> => (await this.git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`)).stdout.trim();
+    let ref = `origin/${base}`;
+    let at = await sha(`refs/remotes/origin/${base}`);
+    if (!at) {
+      ref = base;
+      at = await sha(`refs/heads/${base}`);
+    }
+    if (!at) return null;
+    const head = await sha('HEAD');
+    const counts = head ? (await this.git('rev-list', '--left-right', '--count', `${at}...${head}`)).stdout.trim().split(/\s+/).map(Number) : [];
+    return { ref, sha: at, fetched, branch: await this.branch(), head: head || null, behind: counts[0] || 0, ahead: counts[1] || 0, dirty: (await this.dirty()).length };
+  }
+
   async untracked(): Promise<string[]> {
     return paths((await this.git('ls-files', '-z', '--others', '--exclude-standard')).stdout).filter((f) => !isOwn(f));
   }
@@ -354,6 +375,24 @@ async function branchAt(dir: string): Promise<string | null> {
 }
 
 const worktreeDir = (workspace: string, taskId: string, repo: string): string => path.join(workspace, ORCH_DIR, 'worktrees', taskId, repo);
+
+/**
+ * Where a task branch would start (`ref` at `sha`) and how the checkout stands against it: on `branch` at `head`,
+ * `ahead` commits it does not have, `behind` it lacks, `dirty` files uncommitted. `fetched`: origin was asked just now.
+ */
+interface StartPoint {
+  ref: string;
+  sha: string;
+  fetched: boolean;
+  branch: string | null;
+  head: string | null;
+  ahead: number;
+  behind: number;
+  dirty: number;
+}
+
+/** Whether the checkout is the start point as it is: same commit, nothing uncommitted. */
+const atStart = (p: StartPoint): boolean => p.head === p.sha && p.dirty === 0;
 
 /** A repo of a task: where its checkout is, where the task works, and the base branch. */
 interface TaskRepo {
@@ -517,5 +556,5 @@ async function removeWorktrees(workspace: string, state: TaskState, config: Repo
   return out;
 }
 
-export type { ExecResult, ExecOptions, TaskRepo, Prepared, PrepareResult };
-export { AS_TEXT, OWNER_KEY, writeStagingDirs, exec, launch, setShim, setChildEnv, getChildEnv, GitRepo, branchAt, worktreeDir, taskRepos, prepareRepos, taskDiff, removeWorktrees, isOwn, SLOW_GIT_MS };
+export type { ExecResult, ExecOptions, TaskRepo, Prepared, PrepareResult, StartPoint };
+export { AS_TEXT, OWNER_KEY, writeStagingDirs, exec, launch, setShim, setChildEnv, getChildEnv, GitRepo, branchAt, worktreeDir, taskRepos, prepareRepos, taskDiff, removeWorktrees, isOwn, atStart, SLOW_GIT_MS };
