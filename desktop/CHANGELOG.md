@@ -1,3 +1,9 @@
+## [0.6.0](https://github.com/yurii-bondar/claudestrator/compare/desktop-claudestrator-v0.5.0...desktop-claudestrator-v0.6.0) (2026-11-26)
+
+### Features
+
+* **core:** scenarios as tiles, each with its actions in a ⋮ menu ([1e554e1](https://github.com/yurii-bondar/claudestrator/commit/1e554e1a36c8b79fc538063e6d3eb70aeb2604be))
+
 ## [0.5.0](https://github.com/yurii-bondar/claudestrator/compare/desktop-claudestrator-v0.4.0...desktop-claudestrator-v0.5.0) (2026-11-26)
 
 ### Features
