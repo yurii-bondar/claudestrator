@@ -131,9 +131,15 @@ scenarios:
           if: { severity: minor }    # or { verdict: approved | changes_requested }, { readiness: ready | not_ready | needs_check }, { audit: critical | high | medium | low }, { gates: pass | fail }
           then: [docs-writer, { approve: Read the docs change }]
           else: []
+      - branch:                 # several results joined: all (and), any (or), not; they nest
+          if:                   # a check names its step with on; without the branch's own on, every check does
+            any:
+              - { on: contract-reviewer, severity: major }
+              - all: [{ on: developer, gates: fail }, { not: { on: tester, gates: pass } }]
+          then: [contract-notes, { approve: Read the notes }]
 ~~~
 
-A step is an agent's name, or \`{ agent, model, effort, instructions }\`: the model and effort it runs with in this scenario, and what it does here after its own instructions (a text, or \`{ file: ./prompts/<scenario>/<agent>.md }\`). The blocks are \`parallel\` (read-only agents at once), \`loop\` (\`steps\` of agents or parallels), \`branch\` (\`on\`, \`if\`, \`then\`, \`else\`) and \`approve\` (\`true\`, or what the user should look at).
+A step is an agent's name, or \`{ agent, model, effort, instructions }\`: the model and effort it runs with in this scenario, and what it does here after its own instructions (a text, or \`{ file: ./prompts/<scenario>/<agent>.md }\`). The blocks are \`parallel\` (read-only agents at once), \`loop\` (\`steps\` of agents or parallels), \`branch\` (\`on\`, \`if\`, \`then\`, \`else\`; \`if\` is one check or checks joined with \`all\`, \`any\` and \`not\`, each check with its own \`on\` when it reads another step. A check of a step that reported nothing, skipped or turned off, is unknown: \`any\` holds on another check that holds, \`all\` fails on one that fails, and what stays unknown does not hold) and \`approve\` (\`true\`, or what the user should look at).
 
 \`readiness\` and \`audit\` are the built-in report scenarios: under them goes a list of agent names. \`<id>: false\` takes a built-in scenario out of the menu.
 

@@ -12,7 +12,7 @@ import { ENV_FILE, SECRET_PATHS, GITHUB_TOKENS } from './settings';
 import { signature, writeAtomic } from './files';
 import type { Agent, Config, CustomScenario, Diagnostic, Effort, ForgeOverride, Gate, GitMode, GroupType, Output, Policy, RepoConfig, Runs, ScenarioStep, TaskGroup, TaskInstruction } from './types';
 import { flattenSteps, nestSteps } from './steps';
-import { conditionOutput, describeCondition, sameBranch } from './conditions';
+import { checksOf, conditionOutput, describeCondition, sameBranch } from './conditions';
 import type { AgentStepLayer, FlatStep, ScenarioStepLayer } from './steps';
 
 // ---------- the shapes of a config layer, as written in config.yaml ----------
@@ -990,11 +990,14 @@ function blockProblems(id: string, steps: readonly ScenarioStep[], agents: Recor
     if (st.parallel !== undefined && o && !PARALLEL_OUTPUTS.includes(o)) out.push(['parallel_writes', st.name, `scenario "${id}" runs "${st.name}" in a Parallel, but it writes ${o}: only reviewers, readiness and audit agents run at once`]);
     if (st.when) {
       const i = steps.indexOf(st);
-      const source = steps.findIndex((x) => x.name === st.when!.on);
       const from = steps.findIndex((x) => sameBranch(x.when, st.when));
-      const so = output(st.when.on);
-      if (source === -1 || source >= Math.min(i, from)) out.push(['branch_source', st.name, `scenario "${id}" branches on "${st.when.on}", which is not a step before the branch`]);
-      else if (so && !conditionOutput(st.when.if).includes(so)) out.push(['branch_condition', st.name, `scenario "${id}" asks for ${describeCondition(st.when.on, st.when.if)}, but "${st.when.on}" writes ${so}`]);
+      // Each check of the condition, on its own step: one before the branch, whose output that check reads.
+      for (const { on, check } of checksOf(st.when.on, st.when.if)) {
+        const source = steps.findIndex((x) => x.name === on);
+        const so = output(on);
+        if (source === -1 || source >= Math.min(i, from)) out.push(['branch_source', st.name, `scenario "${id}" branches on "${on}", which is not a step before the branch`]);
+        else if (so && !conditionOutput(check).includes(so)) out.push(['branch_condition', st.name, `scenario "${id}" asks for ${describeCondition(on, check)}, but "${on}" writes ${so}`]);
+      }
       if (st.loop || st.parallel !== undefined) out.push(['branch_nested', st.name, `scenario "${id}": a Branch holds only agents, not a Loop or a Parallel`]);
     }
   }

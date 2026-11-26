@@ -34,17 +34,27 @@ export interface Stage {
 }
 
 /**
- * What a branch looks at: a result a step before it reported. `severity` and `audit` hold when a finding is at least
- * that serious; `gates` when the step's checks passed or were left failing.
+ * One result a step before the branch reported. `severity` and `audit` hold when a finding is at least that serious;
+ * `gates` when the step's checks passed or were left failing. `on` names that step when it is not the branch's own.
  */
-export type Condition =
+export type Check = (
   | { verdict: 'approved' | 'changes_requested' }
   | { severity: Severity }
   | { readiness: ReadinessVerdict }
   | { audit: ReportSeverity }
-  | { gates: 'pass' | 'fail' };
+  | { gates: 'pass' | 'fail' }
+) & { on?: string };
 
-/** A step of a branch: it runs when `on`'s result meets `if`, or, with `else`, when it does not. */
+/**
+ * What a branch looks at: one check, or checks joined: `all` holds when every one does (and), `any` when one does
+ * (or), `not` when its condition does not. They nest.
+ */
+export type Condition = Check | { all: Condition[] } | { any: Condition[] } | { not: Condition };
+
+/**
+ * A step of a branch: it runs when `if` holds, or, with `else`, when it does not. `on` is the step a check without
+ * an `on` of its own looks at.
+ */
 export interface StepWhen {
   on: string;
   if: Condition;

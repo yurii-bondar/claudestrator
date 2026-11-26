@@ -166,29 +166,58 @@ const AGENT_LAYER: Record<string, Check> = {
  * what it does there, after its own instructions (the text, or a file of it).
  */
 const AGENT_STEP = T.any(agentName, T.obj({ agent: agentName, 'model?': T.str(1), 'effort?': T.oneOf(EFFORTS), 'instructions?': T.any(T.str(1), T.obj({ file: T.str(1) })) }));
-/** What a branch looks at: one result of the step it names. */
+/**
+ * What a branch looks at: one result of a step (`{ audit: high }`, with `on: <step>` when it is not the branch's), or
+ * conditions joined: `all: [...]` (and), `any: [...]` (or), `not: <condition>`.
+ */
 const CONDITION: Check = (v, p) => {
   if (kind(v) !== 'object') return [`${at(p)}: expected a condition such as { verdict: approved }, got ${kind(v)}`];
   const keys = Object.keys(asRecord(v));
-  const shapes: Record<string, Check> = {
-    verdict: T.obj({ verdict: T.oneOf(['approved', 'changes_requested']) }),
-    severity: T.obj({ severity: T.oneOf(SEVERITIES) }),
-    readiness: T.obj({ readiness: T.oneOf(['ready', 'not_ready', 'needs_check']) }),
-    audit: T.obj({ audit: T.oneOf(REPORT_SEVERITIES) }),
-    gates: T.obj({ gates: T.oneOf(['pass', 'fail']) }),
+  const joined: Record<string, Check> = {
+    all: T.obj({ all: T.arr(CONDITION, 2) }),
+    any: T.obj({ any: T.arr(CONDITION, 2) }),
+    not: T.obj({ not: CONDITION }),
   };
-  const shape = keys.length === 1 && shapes[keys[0]!];
-  return shape ? shape(v, p) : [`${at(p)}: expected one of ${Object.keys(shapes).join(', ')}, got ${keys.join(', ') || 'nothing'}`];
+  const join = keys.find((k) => joined[k]);
+  if (join) return joined[join]!(v, p);
+  const on = { 'on?': agentName };
+  const shapes: Record<string, Check> = {
+    verdict: T.obj({ verdict: T.oneOf(['approved', 'changes_requested']), ...on }),
+    severity: T.obj({ severity: T.oneOf(SEVERITIES), ...on }),
+    readiness: T.obj({ readiness: T.oneOf(['ready', 'not_ready', 'needs_check']), ...on }),
+    audit: T.obj({ audit: T.oneOf(REPORT_SEVERITIES), ...on }),
+    gates: T.obj({ gates: T.oneOf(['pass', 'fail']), ...on }),
+  };
+  const results = keys.filter((k) => k !== 'on');
+  const shape = results.length === 1 && shapes[results[0]!];
+  return shape ? shape(v, p) : [`${at(p)}: expected one of ${[...Object.keys(shapes), ...Object.keys(joined)].join(', ')}, got ${results.join(', ') || 'nothing'}`];
 };
+/** Paths of the checks in a condition that name no step of their own: a branch without `on` may have none. */
+function checksWithoutOn(v: unknown, p: string): string[] {
+  if (kind(v) !== 'object') return [];
+  const c = asRecord(v);
+  if (Array.isArray(c.all)) return c.all.flatMap((x, i) => checksWithoutOn(x, `${p}.all[${i}]`));
+  if (Array.isArray(c.any)) return c.any.flatMap((x, i) => checksWithoutOn(x, `${p}.any[${i}]`));
+  if (c.not !== undefined) return checksWithoutOn(c.not, `${p}.not`);
+  return c.on === undefined ? [p] : [];
+}
 /** Read-only agents that run at once. */
 const PARALLEL_STEP = T.obj({ parallel: T.arr(AGENT_STEP, 2) });
 /** The task waits for you after the step or block before it: `true`, or what to look at. */
 const APPROVE_STEP = T.obj({ approve: T.any(T.str(1), T.oneOf([true])) });
 const ARM_STEP: Check = (v, p) => (kind(v) === 'object' && 'approve' in asRecord(v) ? APPROVE_STEP(v, p) : AGENT_STEP(v, p));
+/** A branch: `on` is the step its checks look at unless they name their own; without it, every check names one. */
+const BRANCH_STEP: Check = (v, p) => {
+  const issues = T.obj({ branch: T.obj({ 'on?': agentName, if: CONDITION, 'then?': T.arr(ARM_STEP), 'else?': T.arr(ARM_STEP) }) })(v, p);
+  if (issues.length) return issues;
+  const b = asRecord(asRecord(v).branch);
+  if (b.on !== undefined) return [];
+  return checksWithoutOn(b.if, `${p ? `${p}.` : ''}branch.if`).map((x) => `${x}: names no step: give it on: <step>, or give the branch one`);
+};
 const BLOCKS: Record<string, Check> = {
   parallel: PARALLEL_STEP,
   approve: APPROVE_STEP,
-  branch: T.obj({ branch: T.obj({ on: agentName, if: CONDITION, 'then?': T.arr(ARM_STEP), 'else?': T.arr(ARM_STEP) }) }),
+  branch: BRANCH_STEP,
   loop: T.obj({ loop: T.obj({ 'rounds?': T.int(1, 20), steps: T.arr(T.any(AGENT_STEP, PARALLEL_STEP), 1) }) }),
 };
 /**

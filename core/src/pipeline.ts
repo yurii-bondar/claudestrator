@@ -1,6 +1,6 @@
 // Turns the resolved config into stages and loop rules. Routing depends on outputs only, never on names.
 
-import { sameArm } from './conditions';
+import { conditionSources, isCheck, sameArm } from './conditions';
 import type { Agent, Config, Output, Pipeline, PipelineWarning, ReviewLoop, Runs, ScenarioStep, Scope, Stage, StoredPipeline } from './types';
 
 const isWork = (o: Output): boolean => o === 'code' || o === 'tests';
@@ -85,8 +85,13 @@ function scenarioPipeline(config: Pick<Config, 'agents' | 'limits'>, steps: read
   const loop = looped.length ? { from: looped[0]!, to: looped[looped.length - 1]!, rounds: enabled[looped[0]!]!.st.loop!.rounds } : undefined;
   const p = routed(plain, { auto: opts.auto, maxRounds: config.limits.reviewRounds, loop });
   p.warnings.push(...warnings);
-  // A branch on a step that does not run never holds: its other arm runs.
-  for (const { st } of enabled) if (st.when && !enabled.some(({ st: x }) => x.name === st.when!.on)) p.warnings.push({ level: 'warning', code: 'branch_source_off', agent: st.name, message: `"${st.name}" waits on "${st.when.on}", which does not run (turned off): its branch's other arm runs` });
+  // A check on a step that does not run never holds: a branch of that one check alone takes its other arm.
+  for (const { st } of enabled) {
+    if (!st.when) continue;
+    const off = conditionSources(st.when.on, st.when.if).filter((on) => !enabled.some(({ st: x }) => x.name === on));
+    const one = isCheck(st.when.if);
+    for (const on of off) p.warnings.push({ level: 'warning', code: 'branch_source_off', agent: st.name, message: `"${st.name}" waits on "${on}", which does not run (turned off): ${one ? "its branch's other arm runs" : 'its check of it never holds'}` });
+  }
   return p;
 }
 
