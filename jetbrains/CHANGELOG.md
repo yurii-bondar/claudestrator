@@ -1,3 +1,9 @@
+## [0.18.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.17.0...jetbrains-claudestrator-v0.18.0) (2026-11-26)
+
+### Features
+
+* **core:** fold the rail to its icons and hide a diagram's side panel ([023210a](https://github.com/yurii-bondar/claudestrator/commit/023210aec5d0de0f801a4b22c14f420fa40d87bd))
+
 ## [0.17.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.16.0...jetbrains-claudestrator-v0.17.0) (2026-11-26)
 
 ### Features
