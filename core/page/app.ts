@@ -519,8 +519,8 @@ interface Views {
 
   /**
    * The tooltip of an element with `data-tip`, shown at once beside it and over everything (fixed, so no scrolling box
-   * cuts it): to its right in the rail, else to its left. `data-tip-when="rail-collapsed"`: only while the rail is
-   * folded, where the element's own label is hidden.
+   * cuts it): to its right in the rail, under it with `data-tip-below`, else to its left. `data-tip-when="rail-collapsed"`:
+   * only while the rail is folded, where the element's own label is hidden.
    */
   let tipEl: HTMLElement | null = null;
   function showTip(el: HTMLElement) {
@@ -538,9 +538,11 @@ interface Views {
     const r = el.getBoundingClientRect();
     const t = tipEl.getBoundingClientRect();
     const right = Boolean(el.closest('.rail'));
-    const left = right ? r.right + 8 : r.left - t.width - 8;
+    const below = el.dataset.tipBelow !== undefined;
+    const left = below ? r.left + r.width / 2 - t.width / 2 : right ? r.right + 8 : r.left - t.width - 8;
+    const top = below ? r.bottom + 6 : r.top + r.height / 2 - t.height / 2;
     tipEl.style.left = `${Math.max(4, Math.min(window.innerWidth - t.width - 4, left))}px`;
-    tipEl.style.top = `${Math.max(4, Math.min(window.innerHeight - t.height - 4, r.top + r.height / 2 - t.height / 2))}px`;
+    tipEl.style.top = `${Math.max(4, Math.min(window.innerHeight - t.height - 4, top))}px`;
   }
   function hideTip() {
     if (tipEl) tipEl.hidden = true;
