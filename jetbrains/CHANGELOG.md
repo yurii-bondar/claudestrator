@@ -1,3 +1,9 @@
+## [0.18.1](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.18.0...jetbrains-claudestrator-v0.18.1) (2026-11-26)
+
+### Bug Fixes
+
+* **core:** name the folded rail's icons on hover, and fold the side panel from itself ([a365dc0](https://github.com/yurii-bondar/claudestrator/commit/a365dc08c48b1f0b19caeca75a897a94682659af))
+
 ## [0.18.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.17.0...jetbrains-claudestrator-v0.18.0) (2026-11-26)
 
 ### Features
