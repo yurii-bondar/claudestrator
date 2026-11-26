@@ -1,3 +1,15 @@
+## [0.17.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.16.0...jetbrains-claudestrator-v0.17.0) (2026-11-26)
+
+### Features
+
+* **core:** scenarios as tiles, each with its actions in a ⋮ menu ([1e554e1](https://github.com/yurii-bondar/claudestrator/commit/1e554e1a36c8b79fc538063e6d3eb70aeb2604be))
+
+## [0.16.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.15.0...jetbrains-claudestrator-v0.16.0) (2026-11-26)
+
+### Features
+
+* **core:** view any scenario as a diagram, from a menu on each one ([be3887d](https://github.com/yurii-bondar/claudestrator/commit/be3887d2718d2ff618e0ec19ee29778239da151a))
+
 ## [0.15.0](https://github.com/yurii-bondar/claudestrator/compare/jetbrains-claudestrator-v0.14.0...jetbrains-claudestrator-v0.15.0) (2026-11-26)
 
 ### Features

@@ -46,10 +46,12 @@ interface Views {
 interface UiState {
   /** The diagram on screen with its unsaved changes, so a reload of the page keeps them. */
   diagram?: DiagramDraft | null;
+  /** A diagram's unsaved changes put aside while another scenario is only looked at, for when it opens to edit again. */
+  diagramEdit?: DiagramDraft | null;
 }
 
 (function () {
-  const { call, attempt, toast, icon, esc, $, plural, views, patch, debounce, persist, go, S, loadOverview } = window.CS;
+  const { call, attempt, toast, icon, esc, $, plural, views, patch, debounce, persist, go, S, loadOverview, scInfo } = window.CS;
   const { v, agentOf, asEffort, fromConfig, fresh, problems, sameWhen, blockEnd, placed, blockOf, newParallel, CONDITIONS, conditionOf, defaultWhen, approveWhy } = dgModel;
   const { flowHtml, edgeCtx, finishEdge } = dgCanvas;
   const { sideHtml } = dgSide;
@@ -81,9 +83,19 @@ interface UiState {
         <div class="dg-foot muted small" data-region="dg-foot"></div>
       </div>`;
       // A reload comes back to the diagram it left, with its changes; another scenario starts over ("New scenario"
-      // clears it before it comes here).
+      // clears it before it comes here). Looking at one puts the changes of the one being edited aside, and opening
+      // that one to edit again brings them back.
       const kept = S.ui.diagram;
-      if (kept && kept.id !== (route.scenario || null)) S.ui.diagram = null;
+      const view = Boolean(route.view);
+      if (kept && (kept.id !== (route.scenario || null) || Boolean(kept.readonly) !== view)) {
+        if (view && !kept.readonly && kept.dirty) S.ui.diagramEdit = kept;
+        S.ui.diagram = null;
+      }
+      const aside = S.ui.diagramEdit;
+      if (!view && !S.ui.diagram && aside && aside.id && aside.id === route.scenario) {
+        S.ui.diagram = aside;
+        S.ui.diagramEdit = null;
+      }
       this.sel = { kind: 'scenario' };
       this.adding = null;
       await this.load();
@@ -95,9 +107,18 @@ interface UiState {
         patch('dg-head', `<h1>${icon('branch')}Scenario diagram</h1><div class="banner error">${icon('alert')}<div><b>The config has errors, so the diagram cannot be drawn.</b>${data.ok ? '' : `<ul>${data.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>`}</div><button class="btn sm" data-action="open-config">Open config.yaml</button></div>`);
         return;
       }
+      const route = S.route.scenario;
+      // One to look at is drawn from the config each time: your own or a library's as saved, a built-in one by its
+      // agents. One that is gone shows nothing.
+      if (S.route.view && route) {
+        S.ui.diagram = viewOf(this.c, route);
+        persist();
+        await refreshPreview();
+        this.render();
+        return;
+      }
       const d = S.ui.diagram;
       if (d && d.id && !this.c.config.custom[d.id]) S.ui.diagram = null; // deleted elsewhere
-      const route = S.route.scenario;
       if (!S.ui.diagram && route) S.ui.diagram = fromConfig(this.c, route);
       const now = this.draft();
       if (now.id && !now.dirty) S.ui.diagram = fromConfig(this.c, now.id);
@@ -123,6 +144,8 @@ interface UiState {
       this.adding = null;
     },
     render() {
+      // Looking at one: what adds or moves a step is not there, and the right column only shows.
+      $('.dg-page')?.classList.toggle('dg-view', Boolean(this.draft().readonly));
       this.renderHead();
       this.renderFlow();
       this.renderSide();
@@ -130,6 +153,26 @@ interface UiState {
     renderHead() {
       const d = this.draft();
       const errors = problems(d).length;
+      if (d.readonly) {
+        const x = scInfo(d.id || '');
+        patch(
+          'dg-head',
+          `<div class="dg-head">
+            <button class="btn ghost sm" data-action="dg-back">${icon('back')}Scenarios</button>
+            <span class="dg-head-sep"></span>
+            <h1>${icon('branch')}<span class="dg-title">${esc(d.label)}</span></h1>
+            <span class="chip small">view only</span>
+            ${errors ? `<span class="chip small dg-problems">${icon('alert')}${plural(errors, 'problem')}</span>` : ''}
+            <span class="grow"></span>
+            ${x.custom ? `<button class="btn sm" data-action="nav-diagram" data-id="${esc(d.id || '')}" title="The same diagram, to change">${icon('edit')}Edit as diagram</button>` : `<button class="btn sm" data-action="diagram-copy" data-id="${esc(d.id || '')}" title="${esc(`A new scenario with these steps; ${d.label} stays as it is`)}">${icon('edit')}Edit a copy</button>`}
+            <button class="btn primary sm" data-action="sc-use" data-id="${esc(d.id || '')}" ${errors || !d.steps.length ? 'disabled' : ''}>${icon('play')}Use in a new task</button>
+          </div>
+          <p class="muted small dg-lead">${esc(d.description || 'No description.')}</p>`
+        );
+        const loop = this.preview?.pipeline.reviewLoop;
+        patch('dg-foot', `<span>${icon('activity')}${plural(d.steps.filter((st) => agentOf(st.name)?.enabled).length, 'step')} that run${loop ? ` · up to ${plural(loop.maxRounds, 'review round')}` : ''}</span><span class="grow"></span><span>${icon('eye')}View only: click a step to see its settings; nothing here changes the scenario</span>`);
+        return;
+      }
       patch(
         'dg-head',
         `<div class="dg-head">
@@ -157,7 +200,9 @@ interface UiState {
       patch('dg-zoom', `${Math.round(this.zoom * 100)}%`);
     },
     renderSide() {
-      patch('dg-side', sideHtml(this.draft()));
+      const d = this.draft();
+      // A disabled fieldset: every field and button in it only shows.
+      patch('dg-side', d.readonly ? `<fieldset class="dg-view-side" disabled>${sideHtml(d)}</fieldset>` : sideHtml(d));
     },
     /**
      * Applies a change to the draft and draws it; the right column only when `side` (typing there keeps it), the route
@@ -165,6 +210,7 @@ interface UiState {
      */
     change(fn, { side = true, route = true } = {}) {
       const d = this.draft();
+      if (d.readonly) return;
       fn(d);
       d.dirty = true;
       persist();
@@ -181,13 +227,12 @@ interface UiState {
     },
     async save() {
       const d = this.draft();
-      if (!d.steps.length || problems(d).length) return false;
+      if (d.readonly || !d.steps.length || problems(d).length) return false;
       const intake = d.intake.model || d.intake.effort ? d.intake : undefined;
       const r = await attempt('saveScenario', { id: d.id || undefined, label: d.label, description: d.description || undefined, agents: d.steps, intake });
       if (!r) return false;
       d.id = r.id;
       d.dirty = false;
-      S.ui.scEdit = r.id;
       S.ui.scDraft = null;
       S.route = { name: 'scenario-diagram', scenario: r.id };
       persist();
@@ -429,6 +474,18 @@ interface UiState {
     },
   };
 
+  /**
+   * A scenario to look at: your own or a library's as config.yaml has it, a built-in one by its agents in their order
+   * (the pipeline for Deliver). Turned-off agents are drawn as turned off.
+   */
+  function viewOf(c: DgConfig, id: string): DiagramDraft {
+    const own = fromConfig(c, id);
+    if (own) return { ...own, readonly: true };
+    const names = id === 'deliver' ? c.config.pipeline : (c.config.scenarios[id] ?? []);
+    const x = scInfo(id);
+    return { id, label: x.label, description: x.hint || '', steps: names.map((name) => ({ name })), intake: {}, dirty: false, readonly: true };
+  }
+
   async function refreshPreview() {
     const d = v().draft();
     const agents = d.steps.map((st) => ({ name: st.name, ...(st.parallel !== undefined && { parallel: st.parallel }), ...(st.when && { when: st.when }), ...(st.loop && { loop: st.loop }), ...(st.approve && { approve: st.approve }) }));
@@ -499,7 +556,7 @@ interface UiState {
   function removeStep(i: number) {
     const view = v();
     const st = view.draft().steps[i];
-    if (!st) return;
+    if (!st || view.draft().readonly) return;
     view.change((d) => d.steps.splice(i, 1), { side: false });
     const n = view.draft().steps.length;
     select(n ? { kind: 'step', i: Math.min(i, n - 1) } : { kind: 'scenario' });
@@ -565,6 +622,7 @@ interface UiState {
   document.addEventListener('dragstart', (e) => {
     const node = e.target instanceof Element ? e.target.closest<HTMLElement>('.dg-step[draggable="true"]') : null;
     if (!node || !here()) return;
+    if (v().draft().readonly) return void e.preventDefault();
     dragFrom = Number(node.dataset.i);
     node.classList.add('dragging');
     e.dataTransfer!.effectAllowed = 'move';
