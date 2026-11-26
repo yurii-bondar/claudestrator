@@ -300,6 +300,32 @@ button.rail-health { width: 100%; padding: 2px 0; border: 0; background: transpa
 .tab-x .ic { width: 13px; height: 13px; }
 .tab-x:hover { background: var(--cs-bg-hover); }
 .task-tab:hover .tab-x, .task-tab.active .tab-x, .tab-x:focus-visible { visibility: visible; }
+/* The rail folded to its icons (Collapse the sidebar): the sections by icon with their names on hover, their counts as
+   a dot, New task as its +, and the tree, the terminal button, the limits and the account out of the way. A narrow
+   panel opens the rail as a sheet whole, folded or not. */
+.rail-head .rail-fold { margin-left: auto; flex: none; }
+/* A tooltip of its own (data-tip), at once and over everything: the folded rail's names, the side panel's buttons. */
+.cs-tip { position: fixed; z-index: var(--cs-z-toast); max-width: 280px; padding: 4px var(--cs-space-2); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-sm); background: var(--cs-menu-bg); color: var(--cs-menu-fg); box-shadow: var(--cs-shadow); font-size: var(--cs-font-sm); white-space: nowrap; pointer-events: none; }
+.cs-tip[hidden] { display: none; }
+@media (min-width: 761px) {
+  .shell.rail-collapsed { grid-template-columns: 60px minmax(0, 1fr); }
+  .shell.rail-collapsed .rail { padding: var(--cs-space-3) var(--cs-space-2); align-items: center; }
+  .shell.rail-collapsed .rail-head { flex-direction: column; padding: var(--cs-space-1) 0 var(--cs-space-2); }
+  /* Folded, the button that unfolds it comes first, above the folder. */
+  .shell.rail-collapsed .rail-head .rail-fold { margin-left: 0; order: -1; }
+  .shell.rail-collapsed .brand-name, .shell.rail-collapsed .rail-new > span, .shell.rail-collapsed .rail-terminal, .shell.rail-collapsed .nav-label, .shell.rail-collapsed .rail-foot, .shell.rail-collapsed .nav .tree-filter, .shell.rail-collapsed .tree-sections, .shell.rail-collapsed .tree-empty { display: none; }
+  .shell.rail-collapsed .rail-new-row { width: 100%; }
+  .shell.rail-collapsed .rail-new { padding-left: 0; padding-right: 0; justify-content: center; }
+  .shell.rail-collapsed .rail > .nav { width: 100%; }
+  .shell.rail-collapsed .nav-item { position: relative; justify-content: center; padding: 8px 0; }
+  .shell.rail-collapsed .nav-item > .ic { width: 17px; height: 17px; }
+  /* A count is a dot of its colour; its number is in its tooltip. */
+  .shell.rail-collapsed .nav-badges, .shell.rail-collapsed .nav-item > .nb, .shell.rail-collapsed .nav-item > .mcp-dot { position: absolute; top: 5px; right: 8px; }
+  .shell.rail-collapsed .nav-badges { gap: 2px; }
+  .shell.rail-collapsed .nb { width: 7px; height: 7px; padding: 0; font-size: 0; line-height: 0; border-radius: var(--cs-radius-full); box-shadow: none; background: currentColor; }
+  .shell.rail-collapsed .nb .pulse { display: none; }
+}
+
 /* The top bar only shows in a narrow panel, where the rail opens as a sheet from its menu button. */
 .topbar { display: none; }
 @media (max-width: 760px) {
@@ -308,6 +334,7 @@ button.rail-health { width: 100%; padding: 2px 0; border: 0; background: transpa
   .shell.nav-open .rail { transform: none; visibility: visible; }
   .shell.nav-open .rail-scrim { display: block; position: fixed; inset: 0; z-index: var(--cs-z-menu); background: rgba(0, 0, 0, 0.45); }
   .rail-head .rail-close { display: inline-flex; }
+  .rail-head .rail-fold { display: none; }
   .topbar { display: flex; align-items: center; gap: var(--cs-space-2); position: sticky; top: 0; z-index: var(--cs-z-menu); padding: var(--cs-space-2) var(--cs-space-3); background: var(--cs-bg-surface); border-bottom: 1px solid var(--cs-border-default); }
   .topbar-title { flex: 1; min-width: 0; font-weight: var(--cs-weight-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
@@ -1371,6 +1398,10 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .dg-loop-foot { display: flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--cs-font-xs); margin-top: var(--cs-space-2); }
 .dg-loop-foot .ic { width: 12px; height: 12px; }
 .dg-side { position: sticky; top: var(--cs-space-3); max-height: calc(100vh - 120px); overflow: auto; }
+/* The right column hidden (the toggle beside Fit): the canvas takes the width. */
+.dg-layout.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+.dg-layout.side-collapsed > .dg-side { display: none; }
+.dg-zoom .icon-btn[data-action="dg-side-toggle"] { margin-left: var(--cs-space-1); }
 .dg-side-card h3 { display: flex; align-items: center; gap: var(--cs-space-2); margin: 2px 0 var(--cs-space-1); }
 .dg-side-card h4 { margin-top: var(--cs-space-3); }
 .dg-side-card h4:first-child { margin-top: 0; }
@@ -1432,7 +1463,7 @@ b.err, .lim-pct.err { color: var(--cs-status-err-text); }
 .fl-node.fs-pending { opacity: 0.8; }
 body.vscode-high-contrast .dg-loop, body.vscode-high-contrast .dg-parallel, body.vscode-high-contrast .dg-branch { background: transparent; }
 @media (max-width: 900px) {
-  .dg-layout { grid-template-columns: minmax(0, 1fr); }
+  .dg-layout, .dg-layout.side-collapsed { grid-template-columns: minmax(0, 1fr); }
   .dg-side { position: static; max-height: none; }
   .dg-canvas { height: 70vh; }
 }

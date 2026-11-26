@@ -75,10 +75,10 @@ interface UiState {
         <div class="dg-layout">
           <div class="dg-canvas" tabindex="-1">
             <div class="dg-bar"><div class="dg-toolbar"><span class="muted small">Add</span><button class="btn ghost sm" data-action="dg-add" data-i="-1" title="Add an agent at the end">${icon('users')}Agent</button><button class="btn ghost sm" data-action="dg-approve-add" data-i="-1" title="The task waits for you after the selected step, or after the last one">${icon('user')}You approve</button><button class="btn ghost sm" data-action="dg-add" data-i="-1" data-kind="parallel" title="A new Parallel at the end: read-only agents that start together">${icon('activity')}Parallel</button><button class="btn ghost sm" data-action="dg-add" data-i="-1" data-kind="branch" title="A new Branch at the end: steps that run only when an earlier result holds">${icon('branch')}Branch</button><button class="btn ghost sm" data-action="dg-loop-on" title="Choose which steps run again, and how many rounds">${icon('refresh')}Loop</button></div>
-            <div class="dg-zoom"><button class="icon-btn" data-action="dg-zoom" data-level="-1" aria-label="Zoom out">−</button><span class="small" data-region="dg-zoom">100%</span><button class="icon-btn" data-action="dg-zoom" data-level="1" aria-label="Zoom in">${icon('plus')}</button><button class="btn ghost sm" data-action="dg-fit">${icon('eye')}Fit</button></div></div>
+            <div class="dg-zoom"><button class="icon-btn" data-action="dg-zoom" data-level="-1" aria-label="Zoom out">−</button><span class="small" data-region="dg-zoom">100%</span><button class="icon-btn" data-action="dg-zoom" data-level="1" aria-label="Zoom in">${icon('plus')}</button><button class="btn ghost sm" data-action="dg-fit">${icon('eye')}Fit</button><button class="icon-btn" data-action="dg-side-toggle" aria-controls="dg-side" data-tip-below data-region="dg-side-toggle"></button></div></div>
             <div class="dg-flow" data-region="dg-flow"></div>
           </div>
-          <div class="dg-side" data-region="dg-side"></div>
+          <div class="dg-side" id="dg-side" data-region="dg-side"></div>
         </div>
         <div class="dg-foot muted small" data-region="dg-foot"></div>
       </div>`;
@@ -146,6 +146,7 @@ interface UiState {
     render() {
       // Looking at one: what adds or moves a step is not there, and the right column only shows.
       $('.dg-page')?.classList.toggle('dg-view', Boolean(this.draft().readonly));
+      sideShown(!S.ui.dgSideCollapsed);
       this.renderHead();
       this.renderFlow();
       this.renderSide();
@@ -405,6 +406,11 @@ interface UiState {
         leaveTo({ name: 'scenarios' });
       },
       'dg-back': () => leaveTo({ name: 'scenarios' }),
+      'dg-side-toggle': () => {
+        S.ui.dgSideCollapsed = !S.ui.dgSideCollapsed;
+        persist();
+        sideShown(!S.ui.dgSideCollapsed);
+      },
       'dg-zoom': (el) => setZoom(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(v().zoom) + Number(el.dataset.level)))] ?? 1),
       'dg-fit': () => {
         const canvas = $('.dg-canvas');
@@ -527,8 +533,30 @@ interface UiState {
     v().change((d) => d.steps.forEach((st) => sameWhen(st.when, was) && (st.when = { ...next, ...(st.when!.else && { else: true as const }) })));
   }
 
+  /**
+   * Shows or hides the right column; hidden, the canvas takes its width. The choice is kept for every diagram, and the
+   * toggle beside Fit says which it does.
+   */
+  function sideShown(shown: boolean) {
+    $('.dg-layout')?.classList.toggle('side-collapsed', !shown);
+    const label = shown ? 'Hide the side panel' : 'Show the side panel';
+    const btn = $('[data-action="dg-side-toggle"]');
+    if (btn) {
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('aria-expanded', String(shown));
+      btn.dataset.tip = label;
+    }
+    patch('dg-side-toggle', icon('sidebar-right'));
+  }
+
   function select(sel: DgSelection) {
     const view = v();
+    // What is picked on the canvas shows in the right column: a hidden one comes back for it.
+    if (S.ui.dgSideCollapsed && sel.kind !== 'scenario') {
+      S.ui.dgSideCollapsed = false;
+      persist();
+      sideShown(true);
+    }
     view.sel = sel;
     view.renderFlow();
     view.renderSide();

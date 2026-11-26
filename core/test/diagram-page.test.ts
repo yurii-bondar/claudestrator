@@ -19,6 +19,7 @@ interface Draft {
 }
 interface DiagramView {
   enter(route: unknown): Promise<void>;
+  actions: Record<string, (el: unknown) => unknown>;
   change(fn: (d: Draft) => void): void;
   save(): Promise<boolean>;
   draft(): Draft;
@@ -35,7 +36,7 @@ function diagramPage() {
   const html: Record<string, string> = {};
   const saved: unknown[] = [];
   const classes = new Set<string>();
-  const S = { ui: {} as { diagram?: Draft | null; diagramEdit?: Draft | null }, route: { name: 'scenario-diagram' } as Record<string, unknown>, draft: {} };
+  const S = { ui: {} as { diagram?: Draft | null; diagramEdit?: Draft | null; dgSideCollapsed?: boolean }, route: { name: 'scenario-diagram' } as Record<string, unknown>, draft: {} };
   const views: Record<string, unknown> = { home: { scenarioAgents: () => [] } };
   const config = {
     ok: true,
@@ -46,7 +47,8 @@ function diagramPage() {
       custom: { mine: { label: 'Mine', description: 'My own', agents: [{ name: 'developer' }, { name: 'reviewer', approve: {} }], intake: {} } },
     },
   };
-  const el = () => ({ innerHTML: '', style: {} as Record<string, string>, classList: { toggle: (c: string, on: boolean) => void (on ? classes.add(c) : classes.delete(c)), add() {}, remove() {}, contains: () => false }, focus() {}, select() {}, scrollIntoView() {} });
+  const attrs: Record<string, string> = {};
+  const el = () => ({ dataset: {} as Record<string, string>, innerHTML: '', style: {} as Record<string, string>, classList: { toggle: (c: string, on: boolean) => void (on ? classes.add(c) : classes.delete(c)), add() {}, remove() {}, contains: () => false }, setAttribute: (k: string, v: string) => void (attrs[k] = v), focus() {}, select() {}, scrollIntoView() {} });
   const known: Record<string, unknown> = {
     S,
     views,
@@ -78,7 +80,7 @@ function diagramPage() {
     S.route = { name: 'scenario-diagram', ...route };
     await view.enter(S.route);
   };
-  return { view, open, html, S, saved, classes };
+  return { view, open, html, S, saved, classes, attrs };
 }
 
 test('diagram page: a built-in scenario is drawn to look at, by its agents, and nothing on it changes or saves', async () => {
@@ -120,4 +122,24 @@ test("diagram page: your own scenario is drawn as saved; looking at it keeps a d
   assert.deepEqual([p.view.draft().readonly, p.view.draft().dirty, p.view.draft().steps.map((s) => s.name)], [undefined, true, ['developer', 'reviewer', 'planner']], 'and come back when it is edited');
   assert.equal(p.S.ui.diagramEdit, null);
   assert.ok(!p.classes.has('dg-view'));
+});
+
+test('diagram page: the side panel hides and shows from beside Fit, stays hidden for the next diagram, and comes back for a step picked', async () => {
+  const p = diagramPage();
+  await p.open({ scenario: 'deliver', view: true });
+  assert.ok(!p.classes.has('side-collapsed'));
+  assert.equal(p.attrs['aria-label'], 'Hide the side panel');
+  assert.match(p.html['dg-side-toggle']!, /sidebar-right/, 'the toggle beside Fit');
+  assert.doesNotMatch(p.html['dg-side']!, /dg-side-toggle/, 'and none on the panel');
+  p.view.actions['dg-side-toggle']!({ dataset: {} });
+  assert.equal(p.S.ui.dgSideCollapsed, true);
+  assert.ok(p.classes.has('side-collapsed'), 'the canvas takes the width');
+  assert.equal(p.attrs['aria-label'], 'Show the side panel');
+
+  await p.open({ scenario: 'mine', view: true });
+  assert.ok(p.classes.has('side-collapsed'), 'the next diagram opens with it hidden too');
+  p.view.actions['dg-select']!({ dataset: { i: '0' } });
+  assert.equal(p.S.ui.dgSideCollapsed, false, 'a step picked brings it back');
+  assert.ok(!p.classes.has('side-collapsed'));
+  assert.equal(p.attrs['aria-label'], 'Hide the side panel');
 });
