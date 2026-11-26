@@ -1,3 +1,9 @@
+## [0.25.1](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.25.0...claudestrator-v0.25.1) (2026-11-26)
+
+### Bug Fixes
+
+* **core:** name the folded rail's icons on hover, and fold the side panel from itself ([a365dc0](https://github.com/yurii-bondar/claudestrator/commit/a365dc08c48b1f0b19caeca75a897a94682659af))
+
 ## [0.25.0](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.24.0...claudestrator-v0.25.0) (2026-11-26)
 
 ### Features
