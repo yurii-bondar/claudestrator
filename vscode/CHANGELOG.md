@@ -1,3 +1,15 @@
+## [0.22.0](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.21.0...claudestrator-v0.22.0) (2026-11-26)
+
+### Features
+
+* **core:** join a branch's checks with all, any and not ([32fa7d4](https://github.com/yurii-bondar/claudestrator/commit/32fa7d43c9be29010d19364709394b2d3407cf23))
+* **core:** let one agent run outside the sandbox and write named folders ([8030045](https://github.com/yurii-bondar/claudestrator/commit/8030045264c848deb77bcea84161242f394fca1c))
+* **core:** start a task from a chosen branch, and plan against it ([4910809](https://github.com/yurii-bondar/claudestrator/commit/4910809b9b856bcdba0d01fbec643eb58794eb78))
+
+### Bug Fixes
+
+* **core:** name the guard token so an agent outside the sandbox still sends it ([b5a436a](https://github.com/yurii-bondar/claudestrator/commit/b5a436a197053acc930848e8103679469ad77fb9))
+
 ## [0.21.0](https://github.com/yurii-bondar/claudestrator/compare/claudestrator-v0.20.0...claudestrator-v0.21.0) (2026-11-18)
 
 ### Features
