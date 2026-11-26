@@ -35,7 +35,7 @@ interface HomeView extends View {
   start(): Promise<void>;
 }
 
-/** The scenarios listed on the left; the one in `S.ui.scEdit` is on the right, with its editor. */
+/** The scenarios as tiles; the one in `S.ui.scEdit` (Edit as list in its menu) in a panel over them, with its editor. */
 interface ScenariosView extends View {
   /** The libraries this project uses, for the page's own section. */
   libs: LibraryView[];
@@ -856,10 +856,11 @@ interface Views {
   }
 
   /**
-   * A scenario's ⋮ menu: its diagram to look at; to edit (your own and a library's; a built-in one as a copy, which
-   * leaves it as it is); with `use`, a new task with it.
+   * A scenario's ⋮ menu: its diagram to look at; with `list`, its agents to edit as chips in the panel over the tiles;
+   * as a diagram to edit (your own and a library's; a built-in one as a copy, which leaves it as it is); with `use`, a
+   * new task with it; with `remove`, Delete (never Deliver's).
    */
-  function scenarioMenu(id: string, { use = false }: { use?: boolean } = {}) {
+  function scenarioMenu(id: string, { use = false, list = false, remove = false }: { use?: boolean; list?: boolean; remove?: boolean } = {}) {
     const x = scInfo(id);
     const edit = x.custom
       ? `<button role="menuitem" data-action="nav-diagram" data-id="${esc(id)}">${icon('edit')}<span class="sc-text"><b>Edit as diagram</b><span class="muted small">Its steps on a canvas, with instructions per step</span></span></button>`
@@ -867,8 +868,10 @@ interface Views {
     return `<span class="menu-wrap sc-more"><button class="icon-btn" data-action="eff-menu" aria-haspopup="menu" aria-label="${esc(`More for ${x.label}`)}" title="More">${icon('kebab')}</button>
       <div class="menu sc-more-menu" role="menu">
         <button role="menuitem" data-action="sc-view-diagram" data-id="${esc(id)}">${icon('eye')}<span class="sc-text"><b>View as diagram</b><span class="muted small">Its steps, blocks and approvals on a canvas, to look at</span></span></button>
+        ${list ? `<button role="menuitem" data-action="sc-edit" data-id="${esc(id)}">${icon('list')}<span class="sc-text"><b>Edit as list</b><span class="muted small">Its agents in order as chips, with their models and effort</span></span></button>` : ''}
         ${edit}
         ${use ? `<button role="menuitem" data-action="sc-use" data-id="${esc(id)}">${icon('play')}<span class="sc-text"><b>Use in a new task</b></span></button>` : ''}
+        ${remove && id !== 'deliver' ? `<button role="menuitem" class="danger" data-action="sc-delete" data-id="${esc(id)}">${icon('trash')}<span class="sc-text"><b>Delete</b><span class="muted small">${x.custom ? 'Its agents stay' : 'Out of the menu; it can be brought back here'}</span></span></button>` : ''}
       </div></span>`;
   }
 
@@ -1612,18 +1615,19 @@ interface Views {
         return lib ? `<span class="chip small lib-chip" title="${esc(`From the library ${lib}`)}">${icon('folder')}${esc(lib)}</span>` : '<span class="chip small" title="Defined in this project\'s or your own config.yaml">yours</span>';
       };
       const ids = views.home.scenarioIds();
-      // One scenario is always on the right: the one picked, else Deliver. Its editor saves to it (S.ui.scEdit).
-      if (!S.ui.scDraft && (!S.ui.scEdit || !ids.includes(S.ui.scEdit))) S.ui.scEdit = ids[0] ?? null;
-      const sel = S.ui.scDraft ? null : S.ui.scEdit;
-      const item = (id: string) => {
+      // The panel over the tiles: a scenario's agents to edit (Edit as list in its menu), or a new one's first agent.
+      if (S.ui.scEdit && !ids.includes(S.ui.scEdit)) S.ui.scEdit = null;
+      const sel = S.ui.scDraft ? null : S.ui.scEdit ?? null;
+      const tile = (id: string) => {
         const x = scInfo(id);
         const agents = views.home.scenarioAgents(id).filter((a) => a.enabled);
         const on = id === sel;
-        return `<div class="sc-entry-wrap"><button class="sc-entry ${on ? 'selected' : ''}" data-action="sc-edit" data-id="${esc(id)}"${on ? ' aria-current="true"' : ''}>
-          <span class="sc-entry-head">${icon(x.icon)}<b>${esc(x.label)}</b>${origin(id)}</span>
-          <span class="muted small">${esc(x.hint)}</span>
-          <span class="sc-entry-agents">${agents.length ? agents.map((a) => `<span class="${agentColor(a.color)}"><span class="adot"></span></span>`).join('') : ''}<span class="muted small">${agents.length ? plural(agents.length, 'agent') : 'no agents yet'}</span></span>
-        </button>${scenarioMenu(id, { use: true })}</div>`;
+        return `<div class="sc-tile ${on ? 'selected' : ''}"${on ? ' aria-current="true"' : ''}>
+          <div class="sc-tile-head">${icon(x.icon)}<b>${esc(x.label)}</b>${origin(id)}</div>
+          <span class="muted small sc-tile-hint">${esc(x.hint)}</span>
+          <span class="sc-entry-agents">${agents.length ? agents.map((a) => `<span class="${agentColor(a.color)}" title="${esc(a.name)}"><span class="adot"></span></span>`).join('') : ''}<span class="muted small">${agents.length ? plural(agents.length, 'agent') : 'no agents yet'}</span></span>
+          ${scenarioMenu(id, { use: true, list: true, remove: true })}
+        </div>`;
       };
       const detail = (id: string) => {
         const x = scInfo(id);
@@ -1632,36 +1636,33 @@ interface Views {
             <div class="sc-card-title"><h2>${esc(x.label)}</h2>${origin(id)}<span class="muted small">${esc(x.hint)}</span></div>
             <div class="sc-card-actions">
               <button class="btn sm" data-action="sc-use" data-id="${esc(id)}" title="Start a task with ${esc(x.label)}">${icon('play')}Use in a new task</button>
-              ${scenarioMenu(id)}
               ${c.custom.find((sc) => sc.id === id)?.source === 'project' ? libraryMove('scenario', id, this.libs) : ''}
-              ${id === 'deliver' ? '' : `<button class="icon-btn sc-del" data-action="sc-delete" data-id="${esc(id)}" aria-label="Delete ${esc(x.label)}" title="Delete ${esc(x.label)}">${icon('trash')}</button>`}
+              ${scenarioMenu(id, { remove: true })}
+              <button class="icon-btn" data-action="sc-close" aria-label="Close" title="Close (Esc)">${icon('x')}</button>
             </div>
           </div>
           ${this.editorHtml(id)}`;
       };
       const removed = c.removedScenarios || [];
+      const panel = S.ui.scDraft ? this.draftHtml() : sel ? detail(sel) : '';
       patch(
         'scenarios-page',
         `<div class="page-head">
           <div><h1>${icon('wand')}Scenarios</h1>
-          <p class="lead">What a task is for, and which agents do it in what order. Pick one in the task composer, or let your words pick it.</p></div>
+          <p class="lead">What a task is for, and which agents do it in what order. Pick one in the task composer, or let your words pick it. ⋮ on a scenario shows it as a diagram and edits it.</p></div>
           <div class="row"><button class="btn ghost" data-action="open-config">${icon('edit')}config.yaml</button><button class="btn" data-action="backup-save" title="Save this project's agents, pipeline and scenarios to a file">${icon('download')}Save backup</button><button class="btn" data-action="backup-restore" title="Bring agents, pipeline and scenarios back from a backup file; ones with the same name are replaced">${icon('upload')}Restore</button><span class="menu-wrap split-btn"><button class="btn primary" data-action="sc-new">${icon('plus')}New scenario</button><button class="btn primary split-caret" data-action="eff-menu" aria-haspopup="menu" aria-label="New scenario as a list or a diagram">▾</button>
             <div class="menu sc-new-menu" role="menu">
               <button role="menuitem" data-action="sc-new">${icon('list')}<span class="sc-text"><b>List</b><span class="muted small">Agents in order, as chips. Approvals and the review loop are added from their outputs.</span></span></button>
               <button role="menuitem" data-action="nav-diagram">${icon('branch')}<span class="sc-text"><b>Diagram <span class="chip small">new</span></b><span class="muted small">Steps on a canvas: instructions per step, Parallel, Branch, Loop and You approve.</span></span></button>
             </div></span></div>
         </div>
-        <div class="sc-layout">
-          <div class="sc-list">
-            ${ids.map(item).join('')}
-            ${removed.length ? `<h4 class="sc-list-head">Removed</h4>${removed.map((r) => { const label = SCENARIO_INFO[r.id]?.label ?? r.label; return `<button class="btn ghost sm" data-action="sc-restore" data-id="${esc(r.id)}" data-label="${esc(label)}" title="${esc(SCENARIO_INFO[r.id]?.hint ?? r.description ?? '')}">${icon('refresh')}Bring back ${esc(label)}</button>`; }).join('')}` : ''}
-          </div>
-          <div class="sc-list sc-libs">
-            <h4 class="sc-list-head" title="Your own scenarios with the agents they run, in a folder of their own (library.yaml, instructions in prompts/), for all your projects or for this one. They load before your config, so this project can change them without touching the library.">Libraries</h4>
-            ${this.libs.map(libraryBlock).join('')}
-            <button class="btn ghost sm" data-action="lib-add">${icon('plus')}Add library…</button>
-          </div>
-          <section class="card sc-detail ${S.ui.scDraft ? 'sc-draft' : ''}">${S.ui.scDraft ? this.draftHtml() : sel ? detail(sel) : ''}</section>
+        ${panel ? `<section class="card sc-detail sc-panel ${S.ui.scDraft ? 'sc-draft' : ''}">${panel}</section>` : ''}
+        <div class="sc-tiles">${ids.map(tile).join('')}</div>
+        ${removed.length ? `<div class="sc-removed"><h4 class="sc-list-head">Removed</h4>${removed.map((r) => { const label = SCENARIO_INFO[r.id]?.label ?? r.label; return `<button class="btn ghost sm" data-action="sc-restore" data-id="${esc(r.id)}" data-label="${esc(label)}" title="${esc(SCENARIO_INFO[r.id]?.hint ?? r.description ?? '')}">${icon('refresh')}Bring back ${esc(label)}</button>`; }).join('')}</div>` : ''}
+        <h4 class="sc-list-head" title="Your own scenarios with the agents they run, in a folder of their own (library.yaml, instructions in prompts/), for all your projects or for this one. They load before your config, so this project can change them without touching the library.">Libraries</h4>
+        <div class="sc-libs">
+          ${this.libs.map(libraryBlock).join('')}
+          <button class="btn ghost sm" data-action="lib-add">${icon('plus')}Add library…</button>
         </div>
         <p class="muted small">Saved to <code>.claudestrator/config.yaml</code>: new tasks run the new order, running tasks keep theirs (change those on the task screen). A change to a library's scenario is kept in this project's config; the library stays as it is.</p>`
       );
@@ -1969,8 +1970,17 @@ interface Views {
       const ed = pipeEditors[pipe];
       if (ed) pipeSave(pipe, [...ed.names(), name], `${name} added at the end`);
     },
+    // Edit as list: the scenario's agents as chips, in the panel over the tiles.
     'sc-edit': (el) => {
+      closeMenus();
       S.ui.scEdit = el.dataset.id;
+      S.ui.scDraft = null;
+      persist();
+      views.scenarios.render();
+      $('.sc-panel')?.scrollIntoView({ block: 'nearest' });
+    },
+    'sc-close': () => {
+      S.ui.scEdit = null;
       S.ui.scDraft = null;
       persist();
       views.scenarios.render();
@@ -2145,6 +2155,7 @@ interface Views {
       if (current && current.onConfig) current.onConfig();
     },
     'sc-delete': async (el) => {
+      closeMenus();
       const id = el.dataset.id;
       const label = scInfo(id).label;
       const r = await attempt('deleteScenario', { id });
@@ -2407,6 +2418,14 @@ interface Views {
     if (e.key === 'Escape' && $('.shell.nav-open')) {
       setNavOpen(false);
       $<HTMLElement>('.topbar [data-action="toggle-nav"]')?.focus();
+      return;
+    }
+    // The panel over the scenario tiles closes on Esc, once no menu is open and no field is being typed in.
+    if (e.key === 'Escape' && S.route.name === 'scenarios' && (S.ui.scEdit || S.ui.scDraft) && !$('.menu-wrap.open') && !(t && t.matches('input, textarea, select'))) {
+      S.ui.scEdit = null;
+      S.ui.scDraft = null;
+      persist();
+      views.scenarios.render();
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && t && t.matches('[data-action][tabindex], [role="button"]') && !t.matches('button, a, input, textarea, select')) {

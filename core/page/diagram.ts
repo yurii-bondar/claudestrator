@@ -233,7 +233,6 @@ interface UiState {
       if (!r) return false;
       d.id = r.id;
       d.dirty = false;
-      S.ui.scEdit = r.id;
       S.ui.scDraft = null;
       S.route = { name: 'scenario-diagram', scenario: r.id };
       persist();
